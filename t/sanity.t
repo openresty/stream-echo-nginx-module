@@ -1,6 +1,6 @@
 # vi:set ft= ts=4 et:
 
-use Test::Nginx::Socket::Lua;
+use t::TestStream;
 
 plan tests => blocks() * 4;
 
@@ -9,40 +9,12 @@ run_tests;
 __DATA__
 
 === TEST 1: simple single echo
---- main_config
-    stream {
-        server {
-            listen 54321;
+--- stream_server_config
+echo "Hello, stream echo!";
 
-            echo "Hello, stream echo!";
-        }
-    }
-
---- config
-    location = /t {
-        content_by_lua_block {
-            local sock, err = ngx.socket.tcp()
-            assert(sock, err)
-
-            local ok, err = sock:connect("127.0.0.1", 54321)
-            if not ok then
-                ngx.say("connect error: ", err)
-                return
-            end
-
-            local data, err = sock:receive("*a")
-            if not data then
-                ngx.say("receive error: ", err)
-                return
-            end
-
-            ngx.print(data)
-        }
-    }
---- request
-GET /t
---- response_body
+--- stream_response
 Hello, stream echo!
+
 --- no_error_log
 [error]
 [alert]
@@ -50,40 +22,11 @@ Hello, stream echo!
 
 
 === TEST 2: multiple echos
---- main_config
-    stream {
-        server {
-            listen 54321;
+--- stream_server_config
+echo Hi Kindy;
+echo How is "going?";
 
-            echo Hi Kindy;
-            echo How is "going?";
-        }
-    }
-
---- config
-    location = /t {
-        content_by_lua_block {
-            local sock, err = ngx.socket.tcp()
-            assert(sock, err)
-
-            local ok, err = sock:connect("127.0.0.1", 54321)
-            if not ok then
-                ngx.say("connect error: ", err)
-                return
-            end
-
-            local data, err = sock:receive("*a")
-            if not data then
-                ngx.say("receive error: ", err)
-                return
-            end
-
-            ngx.print(data)
-        }
-    }
---- request
-GET /t
---- response_body
+--- stream_response
 Hi Kindy
 How is going?
 
@@ -94,40 +37,11 @@ How is going?
 
 
 === TEST 3: echo -n
---- main_config
-    stream {
-        server {
-            listen 54321;
+--- stream_server_config
+    echo -n "hello, ";
+    echo 'world';
 
-            echo -n "hello, ";
-            echo 'world';
-        }
-    }
-
---- config
-    location = /t {
-        content_by_lua_block {
-            local sock, err = ngx.socket.tcp()
-            assert(sock, err)
-
-            local ok, err = sock:connect("127.0.0.1", 54321)
-            if not ok then
-                ngx.say("connect error: ", err)
-                return
-            end
-
-            local data, err = sock:receive("*a")
-            if not data then
-                ngx.say("receive error: ", err)
-                return
-            end
-
-            ngx.print(data)
-        }
-    }
---- request
-GET /t
---- response_body
+--- stream_response
 hello, world
 
 --- no_error_log
@@ -137,41 +51,12 @@ hello, world
 
 
 === TEST 4: echo without args
---- main_config
-    stream {
-        server {
-            listen 54321;
+--- stream_server_config
+    echo "hello";
+    echo;
+    echo 'world';
 
-            echo "hello";
-            echo;
-            echo 'world';
-        }
-    }
-
---- config
-    location = /t {
-        content_by_lua_block {
-            local sock, err = ngx.socket.tcp()
-            assert(sock, err)
-
-            local ok, err = sock:connect("127.0.0.1", 54321)
-            if not ok then
-                ngx.say("connect error: ", err)
-                return
-            end
-
-            local data, err = sock:receive("*a")
-            if not data then
-                ngx.say("receive error: ", err)
-                return
-            end
-
-            ngx.print(data)
-        }
-    }
---- request
-GET /t
---- response_body
+--- stream_response
 hello
 
 world
