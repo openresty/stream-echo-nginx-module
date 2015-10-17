@@ -17,12 +17,12 @@
 
 
 typedef enum {
-    ngx_stream_echo_opcode_echo,
+    NGX_STREAM_ECHO_OPCODE_ECHO,
 #if 0
-    ngx_stream_echo_opcode_echo_sleep,         /* TODO */
-    ngx_stream_echo_opcode_echo_flush,         /* TODO */
-    ngx_stream_echo_opcode_echo_duplicate,     /* TODO */
-    ngx_stream_echo_opcode_echo_read_request,  /* TODO */
+    NGX_STREAM_ECHO_OPCODE_ECHO_SLEEP,         /* TODO */
+    NGX_STREAM_ECHO_OPCODE_ECHO_FLUSH,         /* TODO */
+    NGX_STREAM_ECHO_OPCODE_ECHO_DUPLICATE,     /* TODO */
+    NGX_STREAM_ECHO_OPCODE_ECHO_READ_REQUEST,  /* TODO */
 #endif
 } ngx_stream_echo_opcode_t;
 
@@ -232,7 +232,7 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
         }
 
         switch (cmd->opcode) {
-        case ngx_stream_echo_opcode_echo:
+        case NGX_STREAM_ECHO_OPCODE_ECHO:
             rc = ngx_stream_echo_exec_echo(s, ctx, &args, &opts);
             break;
 
@@ -660,7 +660,7 @@ ngx_stream_echo_create_ctx(ngx_stream_session_t *s)
 static char *
 ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    return ngx_stream_echo_helper(cf, cmd, conf, ngx_stream_echo_opcode_echo);
+    return ngx_stream_echo_helper(cf, cmd, conf, NGX_STREAM_ECHO_OPCODE_ECHO);
 }
 
 
