@@ -66,3 +66,25 @@ world
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 5: echo --
+--- stream_server_config
+    echo -- -n -t -- hi;
+--- stream_response
+-n -t -- hi
+--- no_error_log
+[error]
+[alert]
+
+
+
+=== TEST 6: echo -n --
+--- stream_server_config
+    echo -n -- -n -t -- hi;
+--- stream_response chop
+-n -t -- hi
+--- no_error_log
+[error]
+[alert]
