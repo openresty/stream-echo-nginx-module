@@ -131,6 +131,19 @@ hello, world
 
 where the first `echo` command generates no trailing new-line due to the use of the `-n` option.
 
+To output string values prefixed with a dash (`-`), you can specify the special `--` option
+to disambiguate such arguments from options. For instance,
+
+```nginx
+echo -n -- -32+5;
+```
+
+The response is
+
+```
+-32+5
+```
+
 This command can be mixed with other `echo_*` commands freely in the same server. The module
 handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
 
