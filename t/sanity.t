@@ -88,3 +88,14 @@ world
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 7: echo unknown options (after a valid option)
+--- stream_server_config
+    echo -n -t ok;
+--- stream_response
+--- error_log eval
+qr/\[error\] .*?stream echo sees unrecognized option \"-t\"/
+--- no_error_log
+[alert]

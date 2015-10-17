@@ -186,7 +186,7 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
     ngx_log_debug0(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "echo run commands");
 
-    c->log->action = "running echo commands";
+    c->log->action = "running stream echo commands";
 
     ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
     if (ctx == NULL) {
@@ -225,7 +225,7 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 
             if (rc == NGX_ERROR) {
                 ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                              "echo failed to evaluate arguments for "
+                              "stream echo failed to evaluate arguments for "
                               "the directive.");
                 return NGX_ERROR;
             }
@@ -238,7 +238,7 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 
         default:
             ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                          "echo unknown opcode: %d",
+                          "stream echo unknown opcode: %d",
                           cmd[ctx->cmd_index].opcode);
 
             return NGX_ERROR;
@@ -342,7 +342,7 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
         }
 
         ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                      "echo sees unrecognized option %*s",
+                      "stream echo sees unrecognized option \"-%*s\"",
                       opt[i].len, opt[i].data);
         return NGX_ERROR;
     }
@@ -483,7 +483,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
 
     if (ev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT,
-                      "client send timed out");
+                      "stream client send timed out");
         c->timedout = 1;
 
         ngx_stream_echo_finalize_session(s, NGX_ERROR);
