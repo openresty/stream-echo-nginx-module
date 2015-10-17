@@ -13,6 +13,7 @@ Table of Contents
 * [Directives](#directives)
     * [echo](#echo)
     * [echo_send_timeout](#echo_send_timeout)
+* [Caveats](#caveats)
 * [Installation](#installation)
 * [Compatibility](#compatibility)
 * [Community](#community)
@@ -171,6 +172,14 @@ It is wise to always explicitly specify the time unit to avoid confusion. Time u
 This time must be less than 597 hours.
 
 If this directive is not specified, this module will use `60s` as the default.
+
+[Back to TOC](#table-of-contents)
+
+Caveats
+=======
+
+* Unlike the [ngx_http_echo module](https://github.com/openresty/echo-nginx-module), this module has no NGINX variable
+support since NGINX variables are not supported in the "stream" subsystem of NGINX (yet).
 
 [Back to TOC](#table-of-contents)
 
