@@ -483,7 +483,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
 
     if (ev->timedout) {
         ngx_log_error(NGX_LOG_INFO, c->log, NGX_ETIMEDOUT,
-                      "client timed out");
+                      "client send timed out");
         c->timedout = 1;
 
         ngx_stream_echo_finalize_session(s, NGX_ERROR);

@@ -1,5 +1,6 @@
 package t::TestStream;
 
+use 5.010001;
 use Test::Nginx::Socket::Lua -Base;
 use Test::Nginx::Util qw( $ServerPort $ServerAddr );
 
@@ -10,10 +11,16 @@ add_block_preprocessor(sub {
 
     my $name = $block->name;
 
+    my $stream_config = $block->stream_config;
     my $stream_server_config = $block->stream_server_config;
-    if (defined $stream_server_config) {
+
+    if (defined $stream_server_config || defined $stream_server_config) {
+        $stream_server_config //= '';
+        $stream_config //= '';
+
         my $new_main_config = <<_EOC_;
 stream {
+$stream_config
     server {
         listen $port;
 
@@ -47,8 +54,15 @@ _EOC_
                         ngx.say("receive error: ", err)
                         return
                     end
+_EOC_
 
+        if (defined $block->response_body || defined $block->stream_response) {
+            $new_http_server_config .= <<_EOC_;
                     ngx.print(data)
+_EOC_
+        }
+
+        $new_http_server_config .= <<_EOC_;
                 }
             }
 _EOC_
