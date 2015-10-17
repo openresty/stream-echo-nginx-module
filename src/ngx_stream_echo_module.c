@@ -260,10 +260,10 @@ ngx_stream_echo_eval_args(ngx_stream_session_t *s,
     ngx_stream_echo_cmd_t *cmd, ngx_array_t *args, ngx_array_t *opts)
 {
     unsigned                         expecting_opts = 1;
+    ngx_str_t                       *arg, *raw, *opt;
     ngx_str_t                       *value;
     ngx_uint_t                       i;
     ngx_array_t                     *raw_args = &cmd->raw_args;
-    ngx_str_t                       *arg, *raw, *opt;
 
     dd("checking cmd %p", cmd);
 
@@ -564,7 +564,6 @@ ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
 {
     ngx_connection_t            *c;
     ngx_stream_echo_ctx_t       *ctx;
-
     ngx_stream_echo_srv_conf_t  *escf;
 
     c = s->connection;
