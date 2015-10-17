@@ -99,3 +99,17 @@ world
 qr/\[error\] .*?stream echo sees unrecognized option \"-t\"/
 --- no_error_log
 [alert]
+
+
+
+=== TEST 8: echo -n and no other args
+--- stream_server_config
+    echo -n;
+    echo 'world';
+
+--- stream_response
+world
+
+--- no_error_log
+[error]
+[alert]
