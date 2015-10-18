@@ -131,3 +131,16 @@ world
 --- error_log eval
 qr/\[emerg\] .*? "echo" directive is not allowed here/
 --- must_die
+
+
+
+=== TEST 10: empty string args
+--- stream_server_config
+echo "" "" "" a;
+
+--- stream_response
+   a
+
+--- no_error_log
+[error]
+[alert]
