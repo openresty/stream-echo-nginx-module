@@ -113,3 +113,19 @@ world
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 9: using echo in stream {}
+--- stream_config
+    echo hi;
+
+--- stream_response
+world
+
+--- no_error_log
+[error]
+[alert]
+--- error_log eval
+qr/\[emerg\] .*? "echo" directive is not allowed here/
+--- must_die

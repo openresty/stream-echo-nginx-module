@@ -737,10 +737,12 @@ ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_stream_echo_srv_conf_t *prev = parent;
     ngx_stream_echo_srv_conf_t *conf = child;
 
+#if 0
     if (conf->cmds.nelts == 0 && prev->cmds.nelts > 0) {
         /* assuming that these arrays are read-only afterwards */
         ngx_memcpy(&conf->cmds, &prev->cmds, sizeof(ngx_array_t));
     }
+#endif
 
     ngx_conf_merge_msec_value(conf->send_timeout, prev->send_timeout, 60000);
 

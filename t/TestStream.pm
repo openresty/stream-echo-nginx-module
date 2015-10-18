@@ -14,7 +14,7 @@ add_block_preprocessor(sub {
     my $stream_config = $block->stream_config;
     my $stream_server_config = $block->stream_server_config;
 
-    if (defined $stream_server_config || defined $stream_server_config) {
+    if (defined $stream_server_config || defined $stream_config) {
         $stream_server_config //= '';
         $stream_config //= '';
 
