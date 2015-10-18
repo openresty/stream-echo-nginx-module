@@ -28,8 +28,6 @@ typedef enum {
 
 
 typedef struct {
-    ngx_array_t                   args;  /* of elements of type ngx_str_t */
-    ngx_array_t                   opts;  /* of elements of type ngx_str_t */
     ngx_str_t                     buffer;
     ngx_stream_echo_opcode_t      opcode;
 } ngx_stream_echo_cmd_t;
@@ -76,7 +74,8 @@ static ngx_stream_echo_ctx_t *
 static char *ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static ngx_stream_echo_cmd_t *ngx_stream_echo_helper(ngx_conf_t *cf,
-    ngx_command_t *cmd, void *conf, ngx_stream_echo_opcode_t opcode);
+    ngx_command_t *cmd, void *conf, ngx_stream_echo_opcode_t opcode,
+    ngx_array_t *args, ngx_array_t *opts);
 static void *ngx_stream_echo_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf,
     void *parent, void *child);
@@ -555,11 +554,13 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     unsigned         nl;  /* controls whether to append a newline char */
     ngx_str_t       *opt, *arg;
     ngx_uint_t       i;
+    ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
 
     echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
-                                      NGX_STREAM_ECHO_OPCODE_ECHO);
+                                      NGX_STREAM_ECHO_OPCODE_ECHO,
+                                      &args, &opts);
     if (echo_cmd == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -567,9 +568,9 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* handle options */
 
     nl = 1;
-    opt = echo_cmd->opts.elts;
+    opt = opts.elts;
 
-    for (i = 0; i < echo_cmd->opts.nelts; i++) {
+    for (i = 0; i < opts.nelts; i++) {
 
         if (opt[i].len == 1 && opt[i].data[0] == 'n') {
             nl = 0;
@@ -591,9 +592,9 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* step 1: pre-calculate the total size of the data buffer actually
      * needed */
 
-    arg = echo_cmd->args.elts;
+    arg = args.elts;
 
-    for (size = 0, i = 0; i < echo_cmd->args.nelts; i++) {
+    for (size = 0, i = 0; i < args.nelts; i++) {
 
         if (i > 0) {
             /* preserve a byte for prepending a space char */
@@ -626,7 +627,7 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     /* step 2: fill in the buffer with actual data */
 
-    for (i = 0; i < echo_cmd->args.nelts; i++) {
+    for (i = 0; i < args.nelts; i++) {
 
         if (i > 0) {
             /* prepending a space char */
@@ -656,7 +657,7 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
 static ngx_stream_echo_cmd_t *
 ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
-    ngx_stream_echo_opcode_t opcode)
+    ngx_stream_echo_opcode_t opcode, ngx_array_t *args, ngx_array_t *opts)
 {
     ngx_stream_echo_srv_conf_t  *escf = conf;
 
@@ -675,24 +676,20 @@ ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
 
     echo_cmd->opcode = opcode;
 
-    if (ngx_array_init(&echo_cmd->args, cf->pool, cf->args->nelts - 1,
+    if (ngx_array_init(args, cf->temp_pool, cf->args->nelts - 1,
                        sizeof(ngx_str_t))
         == NGX_ERROR)
     {
         return NULL;
     }
 
-    if (ngx_array_init(&echo_cmd->opts, cf->pool, 1,
-                       sizeof(ngx_str_t))
+    if (ngx_array_init(opts, cf->temp_pool, 1, sizeof(ngx_str_t))
         == NGX_ERROR)
     {
         return NULL;
     }
 
-    if (ngx_stream_echo_eval_args(cf->args, 1, &echo_cmd->args,
-                                  &echo_cmd->opts)
-        != NGX_OK)
-    {
+    if (ngx_stream_echo_eval_args(cf->args, 1, args, opts) != NGX_OK) {
         return NULL;
     }
 
