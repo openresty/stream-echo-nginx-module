@@ -17,11 +17,11 @@
 
 
 typedef enum {
-    NGX_STREAM_ECHO_OPCODE_ECHO,
+    NGX_STREAM_ECHO_OPCODE_ECHO,    /* used by both "echo" and
+                                       "echo_duplicate" */
 #if 0
     NGX_STREAM_ECHO_OPCODE_ECHO_SLEEP,         /* TODO */
     NGX_STREAM_ECHO_OPCODE_ECHO_FLUSH,         /* TODO */
-    NGX_STREAM_ECHO_OPCODE_ECHO_DUPLICATE,     /* TODO */
     NGX_STREAM_ECHO_OPCODE_ECHO_READ_REQUEST,  /* TODO */
 #endif
 } ngx_stream_echo_opcode_t;
@@ -76,6 +76,9 @@ static char *ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd,
 static ngx_stream_echo_cmd_t *ngx_stream_echo_helper(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf, ngx_stream_echo_opcode_t opcode,
     ngx_array_t *args, ngx_array_t *opts);
+static char *ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+static ssize_t ngx_stream_echo_atosz(u_char *line, size_t n);
 static void *ngx_stream_echo_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf,
     void *parent, void *child);
@@ -86,6 +89,13 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
     { ngx_string("echo"),
       NGX_STREAM_SRV_CONF|NGX_CONF_ANY,
       ngx_stream_echo_echo,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("echo_duplicate"),
+      NGX_STREAM_SRV_CONF|NGX_CONF_2MORE,
+      ngx_stream_echo_echo_duplicate,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
       NULL },
@@ -578,8 +588,8 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         }
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
-                      "stream echo sees unrecognized option \"-%*s\"",
-                      opt[i].len, opt[i].data);
+                      "stream echo sees unknown option \"-%*s\" "
+                      "in \"echo\"", opt[i].len, opt[i].data);
 
         return NGX_CONF_ERROR;
     }
@@ -590,7 +600,7 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
      */
 
     /* step 1: pre-calculate the total size of the data buffer actually
-     * needed */
+     * needed and allocate the buffer. */
 
     arg = args.elts;
 
@@ -694,6 +704,135 @@ ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
     }
 
     return echo_cmd;
+}
+
+
+static char *
+ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    u_char          *p;
+    size_t           size;
+    ssize_t          n;
+    ngx_str_t       *opt, *arg;
+    ngx_uint_t       i;
+    ngx_array_t      opts, args;
+
+    ngx_stream_echo_cmd_t     *echo_cmd;
+
+    /* we can just reuse the "echo" opcode for our purpose. */
+
+    echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
+                                      NGX_STREAM_ECHO_OPCODE_ECHO,
+                                      &args, &opts);
+    if (echo_cmd == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    /* handle options */
+
+    opt = opts.elts;
+
+    for (i = 0; i < opts.nelts; i++) {
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo sees unknown option \"-%*s\" "
+                      "in \"echo_duplicate\"", opt[i].len, opt[i].data);
+
+        return NGX_CONF_ERROR;
+    }
+
+    if (args.nelts != 2) {
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo requires two value arguments in "
+                      "\"echo_duplicate\" but got %ui", args.nelts);
+
+        return NGX_CONF_ERROR;
+    }
+
+    /* prepare the data buffer to be sent */
+
+    /* step 1: pre-calculate the total size of the data buffer actually
+     * needed and allocate the buffer. */
+
+    arg = args.elts;
+
+    /* we do not use ngx_atosz here since we want to handle underscores in
+     * the number representation. */
+    n = ngx_stream_echo_atosz(arg[0].data, arg[0].len);
+
+    if (n == NGX_ERROR) {
+
+        ngx_log_error(NGX_LOG_ERR, cf->log, 0,
+                      "stream echo bad \"n\" argument, %.*s, "
+                      "in \"echo_duplicate\"", arg[0].data, arg[0].len);
+
+        return NGX_CONF_ERROR;
+    }
+
+    size = n * arg[1].len;
+
+    if (size == 0) {
+
+        echo_cmd->buffer.data = NULL;
+        echo_cmd->buffer.len = 0;
+
+        return NGX_CONF_OK;
+    }
+
+    p = ngx_palloc(cf->pool, size);
+    if (p == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    echo_cmd->buffer.data = p;
+    echo_cmd->buffer.len = size;
+
+    /* step 2: fill in the buffer with actual data */
+
+    for (i = 0; (ssize_t) i < n; i++) {
+        p = ngx_copy(p, arg[1].data, arg[1].len);
+    }
+
+    if (p - echo_cmd->buffer.data != (off_t) size) {  /* just an insurance */
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo internal buffer error: %O != %uz",
+                      p - echo_cmd->buffer.data, size);
+
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static ssize_t
+ngx_stream_echo_atosz(u_char *line, size_t n)
+{
+    ssize_t  value;
+
+    if (n == 0) {
+        return NGX_ERROR;
+    }
+
+    for (value = 0; n--; line++) {
+        if (*line == '_') { /* we ignore undercores */
+            continue;
+        }
+
+        if (*line < '0' || *line > '9') {
+            return NGX_ERROR;
+        }
+
+        value = value * 10 + (*line - '0');
+    }
+
+    if (value < 0) {
+        return NGX_ERROR;
+    }
+
+    return value;
 }
 
 

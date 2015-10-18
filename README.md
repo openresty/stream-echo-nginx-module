@@ -12,6 +12,7 @@ Table of Contents
 * [Description](#description)
 * [Directives](#directives)
     * [echo](#echo)
+    * [echo_duplicate](#echo_duplicate)
     * [echo_send_timeout](#echo_send_timeout)
 * [Caveats](#caveats)
 * [Installation](#installation)
@@ -145,15 +146,60 @@ The response is
 -32+5
 ```
 
-This command can be mixed with other `echo_*` commands freely in the same server. The module
-handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
-
 This command sends the data *asynchronously* to the main execution flow, that is, this command
 will return immediately without waiting for the output to be actually flushed into the
 system socket send buffers.
 
 For slow connections the sending timeout protection is subject to the configuration of
 the [echo_send_timeout](#echo_send_timeout) configuration directive.
+
+This command can be mixed with other `echo_*` commands (like [echo_duplicate](#echo_duplicate))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_duplicate
+--------------
+**syntax:** *echo_duplicate &lt;count&gt; &lt;string&gt;*
+
+**default:** *no*
+
+**context:** *server*
+
+**phase:** *content*
+
+Outputs duplication of a string indicated by the second argument, using the count specified in the first argument.
+
+For instance,
+
+```nginx
+echo_duplicate 3 "abc";
+```
+
+will lead to the output of `"abcabcabc"`.
+
+Underscores are allowed in the count number, just like in Perl. For example, to emit 1000,000,000 instances of `"hello, world"`:
+
+```nginx
+echo_duplicate 1000_000_000 "hello, world";
+```
+
+The `count` argument could be zero, but not negative. The second `string` argument could be an empty string ("") likewise.
+
+Unlike the [echo](#echo) directive, no trailing newline is appended to the result.
+
+Like the [echo](#echo) command, this command sends the data *asynchronously* to the main
+execution flow, that is, this command
+will return immediately without waiting for the output to be actually flushed into the
+system socket send buffers.
+
+For slow connections the sending timeout protection is subject to the configuration of
+the [echo_send_timeout](#echo_send_timeout) configuration directive.
+
+This command can be mixed with other `echo*` commands (like [echo](#echo))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
 
 [Back to TOC](#table-of-contents)
 

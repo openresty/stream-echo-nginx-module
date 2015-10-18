@@ -96,7 +96,7 @@ world
     echo -n -t ok;
 --- stream_response
 --- error_log eval
-qr/\[emerg\] .*?stream echo sees unrecognized option \"-t\"/
+qr/\[emerg\] .*?stream echo sees unknown option \"-t\" in "echo"/
 --- no_error_log
 [error]
 [alert]
