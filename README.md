@@ -13,9 +13,11 @@ Table of Contents
 * [Directives](#directives)
     * [echo](#echo)
     * [echo_duplicate](#echo_duplicate)
+    * [echo_flush_wait](#echo_flush_wait)
     * [echo_sleep](#echo_sleep)
     * [echo_send_timeout](#echo_send_timeout)
 * [Caveats](#caveats)
+* [TODO](#todo)
 * [Installation](#installation)
 * [Compatibility](#compatibility)
 * [Community](#community)
@@ -60,6 +62,22 @@ Escape character is '^]'.
 Hello, world!
 I really like doing downstream TCP
 Connection closed by foreign host.
+```
+
+```nginx
+stream {
+    server {
+        listen 1234;
+
+        echo "before sleep...";
+        echo_flush_wait;    # ensure that any pending output is flushed
+
+        echo_sleep 1.5;     # in sec
+
+        echo "after sleep...";
+        echo_duplicate 3 " hello";  # repeat " hello" for 3 times
+    }
+}
 ```
 
 Description
@@ -204,6 +222,31 @@ handler will run them sequentially in the same order of their appearance in the 
 
 [Back to TOC](#table-of-contents)
 
+echo_flush_wait
+---------------
+**syntax:** *echo_flush_wait;*
+
+**default:** *no*
+
+**context:** *server*
+
+**phase:** *content*
+
+Synchronously waits for all the pending output to be flushed out into the system socket
+send buffers. When the downstream connection is fast enough and there is no pending
+data, then this directive completes immediately without waiting.
+
+The wait is a nonblocking operation. That is, it never blocks the NGINX event loop or
+any operating system threads.
+
+The maximum waiting time is subject to the [echo_send_timeout](#echo_send_timeout) setting.
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_sleep](#echo_sleep))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
 echo_sleep
 ----------
 **syntax:** *echo_sleep &lt;seconds&gt;*
@@ -260,6 +303,14 @@ Caveats
 
 * Unlike the [ngx_http_echo module](https://github.com/openresty/echo-nginx-module), this module has no NGINX variable
 support since NGINX variables are not supported in the "stream" subsystem of NGINX (yet).
+
+[Back to TOC](#table-of-contents)
+
+TODO
+====
+
+* port over the "lingering_close" feature of the "http" subsystem.
+* port over the "postpone_output" feature of the "http" subsystem.
 
 [Back to TOC](#table-of-contents)
 
