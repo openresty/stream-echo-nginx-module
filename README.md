@@ -72,12 +72,28 @@ stream {
         echo "before sleep...";
         echo_flush_wait;    # ensure that any pending output is flushed
 
-        echo_sleep 1.5;     # in sec
+        echo_sleep 3.1;     # sleep for 3.1 sec
 
         echo "after sleep...";
         echo_duplicate 3 " hello";  # repeat " hello" for 3 times
+        echo;   # just to ouput a new line
     }
 }
+```
+
+```console
+$ time telnet 127.0.0.1 1234
+Trying 127.0.0.1...
+Connected to 127.0.0.1.
+Escape character is '^]'.
+before sleep...
+after sleep...
+ hello hello hello
+ Connection closed by foreign host.
+
+ real   0m3.106s
+ user   0m0.000s
+ sys    0m0.002s
 ```
 
 Description
