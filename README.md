@@ -13,6 +13,7 @@ Table of Contents
 * [Directives](#directives)
     * [echo](#echo)
     * [echo_duplicate](#echo_duplicate)
+    * [echo_sleep](#echo_sleep)
     * [echo_send_timeout](#echo_send_timeout)
 * [Caveats](#caveats)
 * [Installation](#installation)
@@ -197,7 +198,40 @@ system socket send buffers.
 For slow connections the sending timeout protection is subject to the configuration of
 the [echo_send_timeout](#echo_send_timeout) configuration directive.
 
-This command can be mixed with other `echo*` commands (like [echo](#echo))
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_sleep](#echo_sleep))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_sleep
+----------
+**syntax:** *echo_sleep &lt;seconds&gt;*
+
+**default:** *no*
+
+**context:** *server*
+
+**phase:** *content*
+
+Sleeps for the time period specified by the argument, which is in seconds.
+
+This operation is nonblocking, that is, it never blocks the NGINX event loop or
+any operating system threads.
+
+The period might takes three digits after the decimal point and must be greater than 0.001 (i.e., 1ms).
+
+An example is
+
+```nginx
+echo_sleep 1.234;   # sleep for 1.234 sec
+echo "resumed!";
+```
+
+Behind the scene, it sets up a per-request "sleep" event object, and adds a timer using that
+custom event to the Nginx event model and just waits for a period of time on that event.
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
 freely in the same server. The module
 handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
 

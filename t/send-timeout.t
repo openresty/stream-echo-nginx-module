@@ -25,7 +25,7 @@ use t::TestStream;
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 4 + 1);
+plan tests => repeat_each() * (blocks() * 4 + 3);
 
 run_tests;
 
@@ -133,5 +133,38 @@ echo hello, world;
 qr/event timer add: \d+: 30:/,
 qr/\[info\] .*? client send timed out/,
 ]
+--- no_error_log
+[error]
+
+
+
+=== TEST 8: sleep 43ms and then 52ms (interleaved with "echo")
+--- stream_server_config
+echo hi;
+echo_sleep 0.043;
+echo howdy;
+echo_sleep 0.052;
+echo hello;
+
+--- stream_response
+hi
+howdy
+hello
+--- error_log eval
+[
+qr/event timer add: \d+: 43:/,
+qr/event timer add: \d+: 52:/,
+]
+--- grep_error_log eval
+qr/stream echo running sleep \(delay: \d+\)|stream echo writer handler|stream echo sleep event handler/
+--- grep_error_log_out eval
+qr/^stream echo running sleep \(delay: 43\)
+(?:stream echo writer handler
+)+stream echo sleep event handler
+stream echo running sleep \(delay: 52\)
+(?:stream echo writer handler
+)+stream echo sleep event handler
+(?:stream echo writer handler
+)+$/s
 --- no_error_log
 [error]

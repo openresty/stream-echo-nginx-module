@@ -19,8 +19,8 @@
 typedef enum {
     NGX_STREAM_ECHO_OPCODE_ECHO,    /* used by both "echo" and
                                        "echo_duplicate" */
+    NGX_STREAM_ECHO_OPCODE_SLEEP
 #if 0
-    NGX_STREAM_ECHO_OPCODE_ECHO_SLEEP,         /* TODO */
     NGX_STREAM_ECHO_OPCODE_ECHO_FLUSH,         /* TODO */
     NGX_STREAM_ECHO_OPCODE_ECHO_READ_REQUEST,  /* TODO */
 #endif
@@ -28,7 +28,10 @@ typedef enum {
 
 
 typedef struct {
-    ngx_str_t                     buffer;
+    union {
+        ngx_str_t       buffer;
+        ngx_msec_t      delay;
+    };
     ngx_stream_echo_opcode_t      opcode;
 } ngx_stream_echo_cmd_t;
 
@@ -50,22 +53,27 @@ typedef struct {
 
     ngx_chain_writer_ctx_t           writer;
 
-#if 0
-    ngx_event_t      sleep;
-#endif
+    ngx_event_t                      sleep;
+
+    ngx_pool_cleanup_t              *cleanup;
 
     unsigned                         done;  /* :1 */
 } ngx_stream_echo_ctx_t;
 
 
 static void ngx_stream_echo_handler(ngx_stream_session_t *s);
+static void ngx_stream_echo_resume_execution(ngx_stream_session_t *s);
 static ngx_int_t ngx_stream_echo_run_cmds(ngx_stream_session_t *s);
 static ngx_int_t ngx_stream_echo_eval_args(ngx_array_t *raw_args,
     ngx_uint_t init, ngx_array_t *args, ngx_array_t *opts);
 static ngx_int_t ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
+static ngx_int_t ngx_stream_echo_exec_sleep(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
+static void ngx_stream_echo_cleanup(void *data);
 static ngx_int_t ngx_stream_echo_send_last_buf(ngx_stream_session_t *s);
 static void ngx_stream_echo_writer(ngx_event_t *ev);
+static void ngx_stream_echo_sleep_event_handler(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
 static void ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
     ngx_int_t rc);
@@ -79,6 +87,8 @@ static ngx_stream_echo_cmd_t *ngx_stream_echo_helper(ngx_conf_t *cf,
 static char *ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static ssize_t ngx_stream_echo_atosz(u_char *line, size_t n);
+static char *ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
 static void *ngx_stream_echo_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf,
     void *parent, void *child);
@@ -96,6 +106,13 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
     { ngx_string("echo_duplicate"),
       NGX_STREAM_SRV_CONF|NGX_CONF_2MORE,
       ngx_stream_echo_echo_duplicate,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("echo_sleep"),
+      NGX_STREAM_SRV_CONF|NGX_CONF_1MORE,
+      ngx_stream_echo_echo_sleep,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
       NULL },
@@ -141,7 +158,6 @@ ngx_module_t  ngx_stream_echo_module = {
 static void
 ngx_stream_echo_handler(ngx_stream_session_t *s)
 {
-    ngx_int_t                    rc;
     ngx_connection_t            *c;
     ngx_stream_echo_ctx_t       *ctx;
     ngx_stream_echo_srv_conf_t  *escf;
@@ -164,6 +180,15 @@ ngx_stream_echo_handler(ngx_stream_session_t *s)
     }
 
     ngx_stream_set_ctx(s, ctx, ngx_stream_echo_module);
+
+    ngx_stream_echo_resume_execution(s);
+}
+
+
+static void
+ngx_stream_echo_resume_execution(ngx_stream_session_t *s)
+{
+    ngx_int_t       rc;
 
     rc = ngx_stream_echo_run_cmds(s);
 
@@ -203,7 +228,7 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 
     cmd = escf->cmds.elts;
 
-    for (; ctx->cmd_index < escf->cmds.nelts; ctx->cmd_index++) {
+    while (ctx->cmd_index < escf->cmds.nelts) {
 
         dd("cmd indx: %d", (int) ctx->cmd_index);
 
@@ -211,6 +236,10 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 
         case NGX_STREAM_ECHO_OPCODE_ECHO:
             rc = ngx_stream_echo_exec_echo(s, ctx, &cmd[ctx->cmd_index]);
+            break;
+
+        case NGX_STREAM_ECHO_OPCODE_SLEEP:
+            rc = ngx_stream_echo_exec_sleep(s, ctx, &cmd[ctx->cmd_index]);
             break;
 
         default:
@@ -221,8 +250,10 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
             return NGX_ERROR;
         }
 
-        if (rc == NGX_ERROR) {
-            return NGX_ERROR;
+        ctx->cmd_index++;
+
+        if (rc == NGX_ERROR || rc == NGX_DONE) {
+            return rc;
         }
     }
 
@@ -240,8 +271,6 @@ ngx_stream_echo_eval_args(ngx_array_t *raw_args, ngx_uint_t init,
     ngx_str_t                       *arg, *raw, *opt;
     ngx_str_t                       *value;
     ngx_uint_t                       i;
-
-    dd("checking cmd %p", cmd);
 
     value = raw_args->elts;
 
@@ -329,6 +358,49 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
                             (ngx_buf_tag_t) &ngx_stream_echo_module);
 
     return rc;
+}
+
+
+static ngx_int_t
+ngx_stream_echo_exec_sleep(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd)
+{
+    ngx_connection_t    *c;
+
+    c = s->connection;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
+                   "stream echo running sleep (delay: %M)", cmd->delay);
+
+    if (cmd->delay == 0) {
+        /* do nothing */
+        return NGX_OK;
+    }
+
+    if (ctx->cleanup == NULL) {
+        ctx->cleanup = ngx_pool_cleanup_add(c->pool, 0);
+        if (ctx->cleanup == NULL) {
+            return NGX_ERROR;
+        }
+
+        ctx->cleanup->handler = ngx_stream_echo_cleanup;
+        ctx->cleanup->data = ctx;
+    }
+
+    ngx_add_timer(&ctx->sleep, cmd->delay);
+
+    return NGX_DONE;
+}
+
+
+static void
+ngx_stream_echo_cleanup(void *data)
+{
+    ngx_stream_echo_ctx_t  *ctx = data;
+
+    if (ctx->sleep.timer_set) {
+        ngx_del_timer(&ctx->sleep);
+    }
 }
 
 
@@ -437,6 +509,47 @@ ngx_stream_echo_writer(ngx_event_t *ev)
 
 
 static void
+ngx_stream_echo_sleep_event_handler(ngx_event_t *ev)
+{
+    ngx_connection_t        *c;
+    ngx_stream_session_t    *s;
+
+    s = ev->data;
+    c = s->connection;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "stream echo sleep event handler");
+
+    if (c->destroyed) {
+        return;
+    }
+
+    if (c->error) {
+        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        return;
+    }
+
+    if (!ev->timedout) {
+        ngx_log_error(NGX_LOG_ERR, c->log, 0,
+                      "stream echo: sleeping woke up prematurely");
+        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        return;
+    }
+
+    ev->timedout = 0;   /* reset for the next sleep (if any) */
+
+    if (ev->timer_set) {
+        ngx_log_error(NGX_LOG_ERR, c->log, 0,
+                      "stream echo: timer not deleted on expiration");
+        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        return;
+    }
+
+    ngx_stream_echo_resume_execution(s);
+}
+
+
+static void
 ngx_stream_echo_block_reading(ngx_event_t *ev)
 {
     ngx_connection_t        *c;
@@ -468,33 +581,16 @@ ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
 
     c = s->connection;
 
-    if (rc == NGX_DONE) {   /* yield */
+    ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
+                   "echo finalize session: rc=%i", rc);
 
-        if ((ngx_event_flags & NGX_USE_LEVEL_EVENT)
-            && c->write->active)
-        {
-            if (ngx_del_event(c->write, NGX_WRITE_EVENT, 0) != NGX_OK) {
-                ngx_stream_close_connection(c);
-            }
-        }
-
-        return;
-    }
+    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
 
     if (rc == NGX_ERROR || rc == NGX_DECLINED) {
         goto done;
     }
 
-    /* rc == NGX_OK || rc == NGX_AGAIN */
-
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
-    if (ctx == NULL) {
-        goto done;
-    }
-
-    dd("c->buffered: %d, busy: %p", (int) c->buffered, ctx->busy);
-
-    if (ctx->busy) { /* having pending data to be sent */
+    if (ctx && ctx->busy) { /* having pending data to be sent */
 
         if (!c->write->ready) {
             escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
@@ -511,6 +607,31 @@ ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
 
         return;
     }
+
+    if (rc == NGX_DONE) {   /* yield */
+
+        if ((ngx_event_flags & NGX_USE_LEVEL_EVENT)
+            && c->write->active)
+        {
+            dd("done: ctx->busy: %p", ctx->busy);
+
+            if (ctx && ctx->busy == NULL) {
+                if (ngx_del_event(c->write, NGX_WRITE_EVENT, 0) != NGX_OK) {
+                    ngx_stream_close_connection(c);
+                }
+            }
+        }
+
+        return;
+    }
+
+    /* rc == NGX_OK || rc == NGX_AGAIN */
+
+    if (ctx == NULL) {
+        goto done;
+    }
+
+    dd("c->buffered: %d, busy: %p", (int) c->buffered, ctx->busy);
 
 done:
 
@@ -536,11 +657,9 @@ ngx_stream_echo_create_ctx(ngx_stream_session_t *s)
     ctx->writer.last = &ctx->writer.out;
     ctx->writer.connection = c;
 
-#if 0
     ctx->sleep.handler   = ngx_stream_echo_sleep_event_handler;
     ctx->sleep.data      = s;
     ctx->sleep.log       = c->log;
-#endif
 
     /*
      * set by ngx_pcalloc():
@@ -550,6 +669,7 @@ ngx_stream_echo_create_ctx(ngx_stream_session_t *s)
      *      ctx->free = NULL;
      *      ctx->writer.out = NULL;
      *      ctx->writer.limit = 0;
+     *      ctx->cleanup = NULL;
      */
 
     return ctx;
@@ -763,9 +883,9 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (n == NGX_ERROR) {
 
-        ngx_log_error(NGX_LOG_ERR, cf->log, 0,
-                      "stream echo bad \"n\" argument, %.*s, "
-                      "in \"echo_duplicate\"", arg[0].data, arg[0].len);
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo: bad \"n\" argument, \"%*s\", "
+                      "in \"echo_duplicate\"", arg[0].len, arg[0].data);
 
         return NGX_CONF_ERROR;
     }
@@ -833,6 +953,66 @@ ngx_stream_echo_atosz(u_char *line, size_t n)
     }
 
     return value;
+}
+
+
+static char *
+ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_str_t       *opt, *arg;
+    ngx_int_t        delay;  /* in msec */
+    ngx_uint_t       i;
+    ngx_array_t      opts, args;
+
+    ngx_stream_echo_cmd_t     *echo_cmd;
+
+    echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
+                                      NGX_STREAM_ECHO_OPCODE_SLEEP,
+                                      &args, &opts);
+    if (echo_cmd == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    /* handle options */
+
+    opt = opts.elts;
+
+    for (i = 0; i < opts.nelts; i++) {
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo sees unknown option \"-%*s\" "
+                      "in \"echo_sleep\"", opt[i].len, opt[i].data);
+
+        return NGX_CONF_ERROR;
+    }
+
+    if (args.nelts != 1) {
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo requires one value argument in "
+                      "\"echo_sleep\" but got %ui", args.nelts);
+
+        return NGX_CONF_ERROR;
+    }
+
+    arg = args.elts;
+
+    delay = ngx_atofp(arg[0].data, arg[0].len, 3);
+
+    if (delay == NGX_ERROR) {
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo: bad \"delay\" argument, \"%*s\", "
+                      "in \"echo_sleep\"", arg[0].len, arg[0].data);
+
+        return NGX_CONF_ERROR;
+    }
+
+    dd("sleep delay: %d", (int) delay);
+
+    echo_cmd->delay = (ngx_msec_t) delay;
+
+    return NGX_CONF_OK;
 }
 
 

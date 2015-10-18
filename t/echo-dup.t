@@ -141,10 +141,10 @@ qr/\[emerg\] .*?stream echo requires two value arguments in "echo_duplicate" but
 
 === TEST 10: underscores
 --- stream_server_config
-echo_duplicate 20_000 a;
+echo_duplicate 2_000 a;
 
 --- stream_response eval
-"a" x 20_000
+"a" x 2_000
 --- no_error_log
 [error]
 [alert]
@@ -160,3 +160,18 @@ echo_duplicate 3 "";
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 12: bad n argument
+--- stream_server_config
+echo_duplicate bc a;
+
+--- stream_response
+
+--- error_log eval
+qr/\[emerg\] .*? stream echo: bad "n" argument, "bc", in "echo_duplicate"/
+--- no_error_log
+[error]
+[alert]
+--- must_die
