@@ -28,7 +28,9 @@ typedef enum {
 
 
 typedef struct {
-    ngx_array_t                   raw_args;  /* of elements of type ngx_str_t */
+    ngx_array_t                   args;  /* of elements of type ngx_str_t */
+    ngx_array_t                   opts;  /* of elements of type ngx_str_t */
+    ngx_str_t                     buffer;
     ngx_stream_echo_opcode_t      opcode;
 } ngx_stream_echo_cmd_t;
 
@@ -60,10 +62,10 @@ typedef struct {
 
 static void ngx_stream_echo_handler(ngx_stream_session_t *s);
 static ngx_int_t ngx_stream_echo_run_cmds(ngx_stream_session_t *s);
-static ngx_int_t ngx_stream_echo_eval_args(ngx_stream_session_t *s,
-    ngx_stream_echo_cmd_t *cmd, ngx_array_t *args, ngx_array_t *opts);
+static ngx_int_t ngx_stream_echo_eval_args(ngx_array_t *raw_args,
+    ngx_uint_t init, ngx_array_t *args, ngx_array_t *opts);
 static ngx_int_t ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
-    ngx_stream_echo_ctx_t *ctx, ngx_array_t *args, ngx_array_t *opts);
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
 static ngx_int_t ngx_stream_echo_send_last_buf(ngx_stream_session_t *s);
 static void ngx_stream_echo_writer(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
@@ -73,8 +75,8 @@ static ngx_stream_echo_ctx_t *
     ngx_stream_echo_create_ctx(ngx_stream_session_t *s);
 static char *ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
-static char *ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd,
-    void *conf, ngx_stream_echo_opcode_t opcode);
+static ngx_stream_echo_cmd_t *ngx_stream_echo_helper(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf, ngx_stream_echo_opcode_t opcode);
 static void *ngx_stream_echo_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf,
     void *parent, void *child);
@@ -171,9 +173,6 @@ static ngx_int_t
 ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 {
     ngx_int_t                        rc;
-    ngx_uint_t                       n;
-    ngx_array_t                      opts;
-    ngx_array_t                      args;
     ngx_connection_t                *c;
     ngx_stream_echo_cmd_t           *cmd;
     ngx_stream_echo_ctx_t           *ctx;
@@ -193,47 +192,16 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
         return NGX_ERROR;
     }
 
-    if (ngx_array_init(&args, c->pool, 1, sizeof(ngx_str_t))
-        == NGX_ERROR)
-    {
-        return NGX_ERROR;
-    }
-
-    if (ngx_array_init(&opts, c->pool, 1, sizeof(ngx_str_t))
-        == NGX_ERROR)
-    {
-        return NGX_ERROR;
-    }
-
     cmd = escf->cmds.elts;
 
     for (; ctx->cmd_index < escf->cmds.nelts; ctx->cmd_index++) {
 
         dd("cmd indx: %d", (int) ctx->cmd_index);
 
-        n = cmd[ctx->cmd_index].raw_args.nelts;
+        switch (cmd[ctx->cmd_index].opcode) {
 
-        dd("n = %d", (int) n);
-
-        /* reset the local arrays */
-        args.nelts = 0;
-        opts.nelts = 0;
-
-        if (n > 0) {
-            rc = ngx_stream_echo_eval_args(s, &cmd[ctx->cmd_index], &args,
-                                           &opts);
-
-            if (rc == NGX_ERROR) {
-                ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                              "stream echo failed to evaluate arguments for "
-                              "the directive.");
-                return NGX_ERROR;
-            }
-        }
-
-        switch (cmd->opcode) {
         case NGX_STREAM_ECHO_OPCODE_ECHO:
-            rc = ngx_stream_echo_exec_echo(s, ctx, &args, &opts);
+            rc = ngx_stream_echo_exec_echo(s, ctx, &cmd[ctx->cmd_index]);
             break;
 
         default:
@@ -256,20 +224,19 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
 
 
 static ngx_int_t
-ngx_stream_echo_eval_args(ngx_stream_session_t *s,
-    ngx_stream_echo_cmd_t *cmd, ngx_array_t *args, ngx_array_t *opts)
+ngx_stream_echo_eval_args(ngx_array_t *raw_args, ngx_uint_t init,
+    ngx_array_t *args, ngx_array_t *opts)
 {
     unsigned                         expecting_opts = 1;
     ngx_str_t                       *arg, *raw, *opt;
     ngx_str_t                       *value;
     ngx_uint_t                       i;
-    ngx_array_t                     *raw_args = &cmd->raw_args;
 
     dd("checking cmd %p", cmd);
 
     value = raw_args->elts;
 
-    for (i = 0; i < raw_args->nelts; i++) {
+    for (i = init; i < raw_args->nelts; i++) {
         raw = &value[i];
 
         dd("checking raw arg: \"%.*s\"", (int) raw->len, raw->data);
@@ -316,13 +283,10 @@ ngx_stream_echo_eval_args(ngx_stream_session_t *s,
 
 static ngx_int_t
 ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
-    ngx_stream_echo_ctx_t *ctx, ngx_array_t *args, ngx_array_t *opts)
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd)
 {
-    unsigned             nl;  /* append a new line */
-    ngx_str_t           *opt, *arg;
     ngx_int_t            rc;
-    ngx_uint_t           i;
-    ngx_chain_t         *out, *cl, **ll;
+    ngx_chain_t         *out;
     ngx_connection_t    *c;
 
     c = s->connection;
@@ -330,96 +294,23 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
     ngx_log_debug0(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running echo");
 
-    /* handle options first */
-
-    nl = 1;
-    opt = opts->elts;
-
-    for (i = 0; i < opts->nelts; i++) {
-        if (opt[i].len == 1 && opt[i].data[0] == 'n') {
-            nl = 0;
-            continue;
-        }
-
-        ngx_log_error(NGX_LOG_ERR, c->log, 0,
-                      "stream echo sees unrecognized option \"-%*s\"",
-                      opt[i].len, opt[i].data);
-        return NGX_ERROR;
-    }
-
-    /* prepare the data to be sent (asynchronously)
-     * here we avoid data copying at the price of allocating more
-     * chain links and skeleton bufs */
-
-    out = NULL;
-    ll = &out;
-    arg = args->elts;
-
-    for (i = 0; i < args->nelts; i++) {
-        if (arg[i].len == 0) {
-            /* skip empty string args */
-            continue;
-        }
-
-        dd("arg: %.*s", (int) arg[i].len, arg[i].data);
-
-        if (i > 0) {
-            /* prepend a space buf */
-            cl = ngx_chain_get_free_buf(c->pool, &ctx->free);
-            if (cl == NULL) {
-                return NGX_ERROR;
-            }
-
-            cl->buf->memory = 1;
-            cl->buf->last_buf = 0;
-
-            cl->buf->pos = (u_char *) " ";
-            cl->buf->last = cl->buf->pos + 1;
-
-            cl->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
-
-            *ll = cl;
-            ll = &cl->next;
-        }
-
-        cl = ngx_chain_get_free_buf(c->pool, &ctx->free);
-        if (cl == NULL) {
-            return NGX_ERROR;
-        }
-
-        cl->buf->memory = 1;
-        cl->buf->last_buf = 0;
-
-        /* the data buffer's memory is allocated in the config pool */
-        cl->buf->pos = arg[i].data;
-        cl->buf->last = arg[i].data + arg[i].len;
-
-        cl->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
-
-        *ll = cl;
-        ll = &cl->next;
-    }
-
-    if (nl) {   /* append a new line */
-        cl = ngx_chain_get_free_buf(c->pool, &ctx->free);
-        if (cl == NULL) {
-            return NGX_ERROR;
-        }
-
-        cl->buf->last_buf = 0;
-        cl->buf->memory = 1;
-        cl->buf->pos = (u_char *) "\n";
-        cl->buf->last = cl->buf->pos + 1;
-        cl->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
-
-        *ll = cl;
-        /* ll = &cl->next; */
-    }
-
-    if (out == NULL) {
+    if (cmd->buffer.len == 0) {
         /* do nothing */
         return NGX_OK;
     }
+
+    out = ngx_chain_get_free_buf(c->pool, &ctx->free);
+    if (out == NULL) {
+        return NGX_ERROR;
+    }
+
+    out->buf->memory = 1;
+    out->buf->last_buf = 0;
+
+    out->buf->pos = cmd->buffer.data;
+    out->buf->last = out->buf->pos + cmd->buffer.len;
+
+    out->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
 
     rc = ngx_chain_writer(&ctx->writer, out);
 
@@ -659,18 +550,116 @@ ngx_stream_echo_create_ctx(ngx_stream_session_t *s)
 static char *
 ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    return ngx_stream_echo_helper(cf, cmd, conf, NGX_STREAM_ECHO_OPCODE_ECHO);
+    u_char          *p;
+    size_t           size;
+    unsigned         nl;  /* controls whether to append a newline char */
+    ngx_str_t       *opt, *arg;
+    ngx_uint_t       i;
+
+    ngx_stream_echo_cmd_t     *echo_cmd;
+
+    echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
+                                      NGX_STREAM_ECHO_OPCODE_ECHO);
+    if (echo_cmd == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    /* handle options */
+
+    nl = 1;
+    opt = echo_cmd->opts.elts;
+
+    for (i = 0; i < echo_cmd->opts.nelts; i++) {
+
+        if (opt[i].len == 1 && opt[i].data[0] == 'n') {
+            nl = 0;
+            continue;
+        }
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo sees unrecognized option \"-%*s\"",
+                      opt[i].len, opt[i].data);
+
+        return NGX_CONF_ERROR;
+    }
+
+    /* prepare the data buffer to be sent.
+     * TODO we could merge the data buffers of adjacent "echo" commands
+     * further though it might not worth the trouble. oh well.
+     */
+
+    /* step 1: pre-calculate the total size of the data buffer actually
+     * needed */
+
+    arg = echo_cmd->args.elts;
+
+    for (size = 0, i = 0; i < echo_cmd->args.nelts; i++) {
+
+        if (i > 0) {
+            /* preserve a byte for prepending a space char */
+            size++;
+        }
+
+        size += arg[i].len;
+    }
+
+    if (nl) {
+        /* preserve a byte for the trailing newline char */
+        size++;
+    }
+
+    if (size == 0) {
+
+        echo_cmd->buffer.data = NULL;
+        echo_cmd->buffer.len = 0;
+
+        return NGX_CONF_OK;
+    }
+
+    p = ngx_palloc(cf->pool, size);
+    if (p == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    echo_cmd->buffer.data = p;
+    echo_cmd->buffer.len = size;
+
+    /* step 2: fill in the buffer with actual data */
+
+    for (i = 0; i < echo_cmd->args.nelts; i++) {
+
+        if (i > 0) {
+            /* prepending a space char */
+            *p++ = (u_char) ' ';
+        }
+
+        p = ngx_copy(p, arg[i].data, arg[i].len);
+    }
+
+    if (nl) {
+        /* preserve a byte for the trailing newline char */
+        *p++ = LF;
+    }
+
+    if (p - echo_cmd->buffer.data != (off_t) size) {  /* just an insurance */
+
+        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
+                      "stream echo internal buffer error: %O != %uz",
+                      p - echo_cmd->buffer.data, size);
+
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
 }
 
 
-static char *
+static ngx_stream_echo_cmd_t *
 ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
     ngx_stream_echo_opcode_t opcode)
 {
     ngx_stream_echo_srv_conf_t  *escf = conf;
 
-    ngx_str_t                   *value, *arg;
-    ngx_uint_t                   i;
     ngx_stream_echo_cmd_t       *echo_cmd;
     ngx_stream_core_srv_conf_t  *cscf;
 
@@ -679,32 +668,35 @@ ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
         cscf->handler = ngx_stream_echo_handler;
     }
 
-    value = cf->args->elts;
-
     echo_cmd = ngx_array_push(&escf->cmds);
     if (echo_cmd == NULL) {
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 
     echo_cmd->opcode = opcode;
 
-    if (ngx_array_init(&echo_cmd->raw_args, cf->pool, cf->args->nelts - 1,
+    if (ngx_array_init(&echo_cmd->args, cf->pool, cf->args->nelts - 1,
                        sizeof(ngx_str_t))
         == NGX_ERROR)
     {
-        return NGX_CONF_ERROR;
+        return NULL;
     }
 
-    for (i = 1; i < cf->args->nelts; i++) {
-        arg = ngx_array_push(&echo_cmd->raw_args);
-        if (arg == NULL) {  /* well, cannot fail, really */
-            return NGX_CONF_ERROR;
-        }
-
-        *arg = value[i];
+    if (ngx_array_init(&echo_cmd->opts, cf->pool, 1,
+                       sizeof(ngx_str_t))
+        == NGX_ERROR)
+    {
+        return NULL;
     }
 
-    return NGX_CONF_OK;
+    if (ngx_stream_echo_eval_args(cf->args, 1, &echo_cmd->args,
+                                  &echo_cmd->opts)
+        != NGX_OK)
+    {
+        return NULL;
+    }
+
+    return echo_cmd;
 }
 
 
