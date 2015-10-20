@@ -1251,11 +1251,11 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     opt = opts.elts;
 
-    for (i = 0; i < opts.nelts; i++) {
+    if (opts.nelts > 0) {
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_duplicate\"", opt[i].len, opt[i].data);
+                      "in \"echo_duplicate\"", opt[0].len, opt[0].data);
 
         return NGX_CONF_ERROR;
     }
@@ -1360,7 +1360,6 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t       *opt, *arg;
     ngx_int_t        delay;  /* in msec */
-    ngx_uint_t       i;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -1376,11 +1375,11 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     opt = opts.elts;
 
-    for (i = 0; i < opts.nelts; i++) {
+    if (opts.nelts > 0) {
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_sleep\"", opt[i].len, opt[i].data);
+                      "in \"echo_sleep\"", opt[0].len, opt[0].data);
 
         return NGX_CONF_ERROR;
     }
@@ -1419,7 +1418,6 @@ static char *
 ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t       *opt;
-    ngx_uint_t       i;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -1435,11 +1433,11 @@ ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     opt = opts.elts;
 
-    for (i = 0; i < opts.nelts; i++) {
+    if (opts.nelts > 0) {
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_flush_wait\"", opt[i].len, opt[i].data);
+                      "in \"echo_flush_wait\"", opt[0].len, opt[0].data);
 
         return NGX_CONF_ERROR;
     }
