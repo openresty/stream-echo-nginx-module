@@ -74,7 +74,6 @@ static ngx_int_t ngx_stream_echo_exec_sleep(ngx_stream_session_t *s,
 static void ngx_stream_echo_cleanup(void *data);
 static ngx_int_t ngx_stream_echo_exec_flush_wait(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
-static ngx_int_t ngx_stream_echo_send_last_buf(ngx_stream_session_t *s);
 static void ngx_stream_echo_writer(ngx_event_t *ev);
 static void ngx_stream_echo_sleep_event_handler(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
@@ -205,11 +204,6 @@ ngx_stream_echo_resume_execution(ngx_stream_session_t *s)
     rc = ngx_stream_echo_run_cmds(s);
 
     dd("run cmds returned %d", (int) rc);
-
-    if (rc == NGX_OK) {
-        /* all commands have been run */
-        rc = ngx_stream_echo_send_last_buf(s);
-    }
 
     ngx_stream_echo_finalize_session(s, rc);
 }
@@ -359,7 +353,6 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
     }
 
     out->buf->memory = 1;
-    out->buf->last_buf = 0;
 
     out->buf->pos = cmd->buffer.data;
     out->buf->last = out->buf->pos + cmd->buffer.len;
@@ -435,39 +428,6 @@ ngx_stream_echo_exec_flush_wait(ngx_stream_session_t *s,
     ctx->waiting_flush = 1;
 
     return NGX_DONE;
-}
-
-
-static ngx_int_t
-ngx_stream_echo_send_last_buf(ngx_stream_session_t *s)
-{
-    ngx_int_t                    rc;
-    ngx_chain_t                 *out;
-    ngx_connection_t            *c;
-    ngx_stream_echo_ctx_t       *ctx;
-
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
-
-    c = s->connection;
-
-    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, c->log, 0,
-                   "stream echo send last buf");
-
-    out = ngx_chain_get_free_buf(c->pool, &ctx->free);
-    if (out == NULL) {
-        return NGX_ERROR;
-    }
-
-    out->buf->memory = 0;
-    out->buf->last_buf = 1;
-    out->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
-
-    rc = ngx_chain_writer(&ctx->writer, out);
-
-    ngx_chain_update_chains(c->pool, &ctx->free, &ctx->busy, &out,
-                            (ngx_buf_tag_t) &ngx_stream_echo_module);
-
-    return rc;
 }
 
 
