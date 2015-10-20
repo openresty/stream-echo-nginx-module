@@ -9,6 +9,8 @@ Table of Contents
 * [NAME](#name)
 * [Version](#version)
 * [Synopsis](#synopsis)
+    * [Example 1](#example-1)
+    * [Example 2](#example-2)
 * [Description](#description)
 * [Directives](#directives)
     * [echo](#echo)
@@ -42,6 +44,9 @@ This module is still under early development.
 Synopsis
 ========
 
+Example 1
+---------
+
 ```nginx
 # nginx.conf
 
@@ -68,6 +73,11 @@ Hello, world!
 I really like doing downstream TCP
 Connection closed by foreign host.
 ```
+
+[Back to TOC](#table-of-contents)
+
+Example 2
+---------
 
 ```nginx
 stream {
@@ -100,6 +110,8 @@ after sleep...
  user   0m0.000s
  sys    0m0.002s
 ```
+
+[Back to TOC](#table-of-contents)
 
 Description
 ===========
