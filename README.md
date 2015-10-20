@@ -16,6 +16,11 @@ Table of Contents
     * [echo_flush_wait](#echo_flush_wait)
     * [echo_sleep](#echo_sleep)
     * [echo_send_timeout](#echo_send_timeout)
+    * [echo_read_bytes](#echo_read_bytes)
+    * [echo_request_data](#echo_request_data)
+    * [echo_read_buffer_size](#echo_read_buffer_size)
+    * [echo_read_timeout](#echo_read_timeout)
+    * [echo_client_error_log_level](#echo_client_error_log_level)
 * [Caveats](#caveats)
 * [TODO](#todo)
 * [Installation](#installation)
@@ -114,8 +119,6 @@ Well, it is just a little bit more complex than a "hello world" module anyway.
 
 Directives
 ==========
-
-[Back to TOC](#table-of-contents)
 
 echo
 ----
@@ -311,6 +314,115 @@ It is wise to always explicitly specify the time unit to avoid confusion. Time u
 This time must be less than 597 hours.
 
 If this directive is not specified, this module will use `60s` as the default.
+
+[Back to TOC](#table-of-contents)
+
+echo_read_bytes
+---------------
+**syntax:** *echo_read_bytes &lt;size&gt;*
+
+**default:** *no*
+
+**context:** *server*
+
+Reads the request data of the specified size and append it into the "reading buffer".
+The size of the buffer is controlled by the [echo_read_buffer_size](#echo_read_buffer_size)
+directive. The length of data dictated in this command cannot exceed the
+[echo_read_buffer_size](#echo_read_buffer_size) setting.
+
+For example,
+
+```nginx
+echo_read_bytes 5;
+```
+
+reads 5 bytes of request data from the downstream connection.
+
+On the other hand,
+
+```nginx
+echo_read_bytes 4k;
+```
+
+reads 4KB of data.
+
+This command would not return (until timeout) until exactly the acount of data has been
+read as specified.
+
+The timeout threshold is subject to the [echo_read_timeout](#echo_read_timeout) directive.
+
+The data read (in the "reading buffer") can later be output by the [echo_request_data](#echo_request_data)
+directive.
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_request_data
+-----------------
+**syntax:** *echo_request_data &lt;size&gt;*
+
+**default:** *no*
+
+**context:** *server*
+
+Sends all the data accumulated in the "reading buffer" to the downstream connection and
+clears all the data in the "reading buffer".
+
+Unlike [echo](#echo) or [echo_duplicate](#echo_duplicate), this command does not return
+until all the data is actually flushed into the system socket send buffer. Or in other words, this command is a synchronous operation (but still doing nonblocking I/O, of course).
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_read_buffer_size
+---------------------
+**syntax:** *echo_read_buffer_size &lt;size&gt;*
+
+**default:** *echo_read_buffer_size 1k*
+
+**context:** *stream, server*
+
+Controls the size of the "reading buffer" used to receive downstream data via commands
+like [echo_read_bytes](#echo_read_bytes).
+
+[Back to TOC](#table-of-contents)
+
+echo_read_timeout
+-----------------
+**syntax:** *echo_read_timeout &lt;time&gt;*
+
+**default:** *echo_read_timeout 60s*
+
+**context:** *stream, server*
+
+Sets the reading timeout for the downstream socket, in seconds by default. Affecting
+reading directives like [echo_read_bytes](#echo_read_bytes).
+
+It is wise to always explicitly specify the time unit to avoid confusion. Time units supported are "s"(seconds), "ms"(milliseconds), "y"(years), "M"(months), "w"(weeks), "d"(days), "h"(hours), and "m"(minutes).
+
+This time must be less than 597 hours.
+
+If this directive is not specified, this module will use `60s` as the default.
+
+[Back to TOC](#table-of-contents)
+
+echo_client_error_log_level
+---------------------------
+**syntax:** *echo_client_error_log_level info | notice | warn | error*
+
+**default:** *echo_client_error_log_level info*
+
+**context:** *stream, server*
+
+Specifies the error log level for client side errors (like the error that the client
+closes the connection prematurely). Default to `info` to avoid real-world clients from
+flooding the server error log files (which can be quite expensive).
 
 [Back to TOC](#table-of-contents)
 

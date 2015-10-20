@@ -19,3 +19,4 @@ go
 t/servroot/
 a.txt
 a.patch
+*.t_

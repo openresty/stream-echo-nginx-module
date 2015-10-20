@@ -4,7 +4,9 @@ use 5.010001;
 use Test::Nginx::Socket::Lua -Base;
 use Test::Nginx::Util qw( $ServerPort $ServerAddr );
 
-my $port = $ServerPort + 1;
+sub get_best_long_bracket_level ($);
+
+my $port = $ENV{TEST_NGINX_STREAM_PORT} // ($ServerPort + 1);
 
 add_block_preprocessor(sub {
     my ($block) = @_;
@@ -13,6 +15,7 @@ add_block_preprocessor(sub {
 
     my $stream_config = $block->stream_config;
     my $stream_server_config = $block->stream_server_config;
+    my $stream_req = $block->stream_request;
 
     if (defined $stream_server_config || defined $stream_config) {
         $stream_server_config //= '';
@@ -45,13 +48,29 @@ _EOC_
 
                     local ok, err = sock:connect("$ServerAddr", $port)
                     if not ok then
-                        ngx.say("connect error: ", err)
+                        ngx.say("connect to stream server error: ", err)
                         return
                     end
+_EOC_
+
+        if (defined $stream_req) {
+            my $level = get_best_long_bracket_level($stream_req);
+            my $equals = "=" x $level;
+            $new_http_server_config .= <<_EOC_;
+
+                    local bytes, err = sock:send([$equals\[$stream_req\]$equals])
+                    if not bytes then
+                        ngx.say("send stream request error: ", err)
+                        return
+                    end
+_EOC_
+        }
+
+        $new_http_server_config .= <<_EOC_;
 
                     local data, err = sock:receive("*a")
                     if not data then
-                        ngx.say("receive error: ", err)
+                        ngx.say("receive stream response error: ", err)
                         return
                     end
 _EOC_
@@ -88,5 +107,20 @@ _EOC_
         $block->set_value("response_body", $stream_response);
     }
 });
+
+sub get_best_long_bracket_level ($) {
+    my ($s) = @_;
+
+    my $equals = '';
+    for (my $i = 0; $i < 100; $i++) {
+        if ($s !~ /\[$equals\[|\]$equals\]/) {
+            return $i;
+        }
+
+        my $equals .= "=";
+    }
+
+    die "failed to get the bets long bracket level\n";
+}
 
 1;
