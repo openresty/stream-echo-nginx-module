@@ -95,8 +95,7 @@ static void ngx_stream_echo_adjust_buffer_in(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_chain_t *out);
 static void ngx_stream_echo_sleep_event_handler(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
-static void ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
-    ngx_int_t rc);
+static void ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc);
 static ngx_stream_echo_ctx_t *
     ngx_stream_echo_create_ctx(ngx_stream_session_t *s);
 static char *ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -241,7 +240,7 @@ ngx_stream_echo_handler(ngx_stream_session_t *s)
 
     escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
     if (escf->cmds.nelts == 0) {
-        ngx_stream_echo_finalize_session(s, NGX_DECLINED);
+        ngx_stream_echo_finalize(s, NGX_DECLINED);
         return;
     }
 
@@ -252,7 +251,7 @@ ngx_stream_echo_handler(ngx_stream_session_t *s)
 
     ctx = ngx_stream_echo_create_ctx(s);
     if (ctx == NULL) {
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
@@ -271,7 +270,7 @@ ngx_stream_echo_resume_execution(ngx_stream_session_t *s)
 
     dd("run cmds returned %d", (int) rc);
 
-    ngx_stream_echo_finalize_session(s, rc);
+    ngx_stream_echo_finalize(s, rc);
 }
 
 
@@ -604,7 +603,7 @@ ngx_stream_echo_do_read_bytes(ngx_stream_session_t *s,
             ngx_add_timer(c->read, escf->read_timeout);
 
             if (ngx_handle_read_event(c->read, 0) != NGX_OK) {
-                ngx_stream_echo_finalize_session(s, NGX_ERROR);
+                ngx_stream_echo_finalize(s, NGX_ERROR);
                 return NGX_ERROR;;
             }
 
@@ -679,21 +678,21 @@ ngx_stream_echo_read_bytes_handler(ngx_event_t *ev)
                       "stream client read timed out");
         c->timedout = 1;
 
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
     ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
     if (ctx == NULL) {
         /* cannot really happen */
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
     rc = ngx_stream_echo_do_read_bytes(s, ctx);
 
     if (rc == NGX_ERROR) {
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
@@ -848,14 +847,14 @@ ngx_stream_echo_writer(ngx_event_t *ev)
                       "stream client send timed out");
         c->timedout = 1;
 
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
     ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
     if (ctx == NULL) {
         /* cannot really happen */
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
@@ -872,7 +871,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
                             (ngx_buf_tag_t) &ngx_stream_echo_module);
 
     if (rc == NGX_ERROR) {
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
@@ -882,7 +881,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
         ngx_add_timer(c->write, escf->send_timeout);
 
         if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
-            ngx_stream_echo_finalize_session(s, NGX_ERROR);
+            ngx_stream_echo_finalize(s, NGX_ERROR);
         }
 
         return;
@@ -892,7 +891,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
 
     if (ctx->done) {
         /* all the commands are done */
-        ngx_stream_echo_finalize_session(s, NGX_OK);
+        ngx_stream_echo_finalize(s, NGX_OK);
         return;
     }
 
@@ -907,7 +906,7 @@ ngx_stream_echo_writer(ngx_event_t *ev)
         return;
     }
 
-    ngx_stream_echo_finalize_session(s, NGX_DONE);
+    ngx_stream_echo_finalize(s, NGX_DONE);
 }
 
 
@@ -928,14 +927,14 @@ ngx_stream_echo_sleep_event_handler(ngx_event_t *ev)
     }
 
     if (c->error) {
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
     if (!ev->timedout) {
         ngx_log_error(NGX_LOG_ERR, c->log, 0,
                       "stream echo: sleeping woke up prematurely");
-        ngx_stream_echo_finalize_session(s, NGX_ERROR);
+        ngx_stream_echo_finalize(s, NGX_ERROR);
         return;
     }
 
@@ -961,15 +960,14 @@ ngx_stream_echo_block_reading(ngx_event_t *ev)
     {
         if (ngx_del_event(c->read, NGX_READ_EVENT, 0) != NGX_OK) {
             s = c->data;
-            ngx_stream_echo_finalize_session(s, NGX_ERROR);
+            ngx_stream_echo_finalize(s, NGX_ERROR);
         }
     }
 }
 
 
 static void
-ngx_stream_echo_finalize_session(ngx_stream_session_t *s,
-    ngx_int_t rc)
+ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 {
     ngx_connection_t            *c;
     ngx_stream_echo_ctx_t       *ctx;
