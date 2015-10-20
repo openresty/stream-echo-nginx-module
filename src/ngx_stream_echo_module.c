@@ -31,7 +31,8 @@ typedef struct {
         ssize_t         size;
         ngx_str_t       buffer;
         ngx_msec_t      delay;
-    };
+    } data;
+
     ngx_stream_echo_opcode_t      opcode;
 } ngx_stream_echo_cmd_t;
 
@@ -432,7 +433,7 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
     ngx_log_debug0(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running echo");
 
-    if (cmd->buffer.len == 0) {
+    if (cmd->data.buffer.len == 0) {
         /* do nothing */
         return NGX_OK;
     }
@@ -444,8 +445,8 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
 
     out->buf->memory = 1;
 
-    out->buf->pos = cmd->buffer.data;
-    out->buf->last = out->buf->pos + cmd->buffer.len;
+    out->buf->pos = cmd->data.buffer.data;
+    out->buf->last = out->buf->pos + cmd->data.buffer.len;
 
     out->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
 
@@ -469,9 +470,10 @@ ngx_stream_echo_exec_sleep(ngx_stream_session_t *s,
     c = s->connection;
 
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
-                   "stream echo running sleep (delay: %M)", cmd->delay);
+                   "stream echo running sleep (delay: %M)",
+                   cmd->data.delay);
 
-    if (cmd->delay == 0) {
+    if (cmd->data.delay == 0) {
         /* do nothing */
         return NGX_OK;
     }
@@ -486,7 +488,7 @@ ngx_stream_echo_exec_sleep(ngx_stream_session_t *s,
         ctx->cleanup->data = ctx;
     }
 
-    ngx_add_timer(&ctx->sleep, cmd->delay);
+    ngx_add_timer(&ctx->sleep, cmd->data.delay);
 
     return NGX_DONE;
 }
@@ -533,7 +535,7 @@ ngx_stream_echo_exec_read_bytes(ngx_stream_session_t *s,
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running read-bytes (busy: %p)", ctx->busy);
 
-    ctx->rest = cmd->size;
+    ctx->rest = cmd->data.size;
 
     rc = ngx_stream_echo_do_read_bytes(s, ctx);
 
@@ -1140,8 +1142,8 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (size == 0) {
 
-        echo_cmd->buffer.data = NULL;
-        echo_cmd->buffer.len = 0;
+        echo_cmd->data.buffer.data = NULL;
+        echo_cmd->data.buffer.len = 0;
 
         return NGX_CONF_OK;
     }
@@ -1151,8 +1153,8 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    echo_cmd->buffer.data = p;
-    echo_cmd->buffer.len = size;
+    echo_cmd->data.buffer.data = p;
+    echo_cmd->data.buffer.len = size;
 
     /* step 2: fill in the buffer with actual data */
 
@@ -1171,11 +1173,12 @@ ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         *p++ = LF;
     }
 
-    if (p - echo_cmd->buffer.data != (off_t) size) {  /* just an insurance */
+    if (p - echo_cmd->data.buffer.data != (off_t) size) {
+        /* just as an insurance */
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo internal buffer error: %O != %uz",
-                      p - echo_cmd->buffer.data, size);
+                      p - echo_cmd->data.buffer.data, size);
 
         return NGX_CONF_ERROR;
     }
@@ -1293,8 +1296,8 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (size == 0) {
 
-        echo_cmd->buffer.data = NULL;
-        echo_cmd->buffer.len = 0;
+        echo_cmd->data.buffer.data = NULL;
+        echo_cmd->data.buffer.len = 0;
 
         return NGX_CONF_OK;
     }
@@ -1304,8 +1307,8 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    echo_cmd->buffer.data = p;
-    echo_cmd->buffer.len = size;
+    echo_cmd->data.buffer.data = p;
+    echo_cmd->data.buffer.len = size;
 
     /* step 2: fill in the buffer with actual data */
 
@@ -1313,11 +1316,12 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         p = ngx_copy(p, arg[1].data, arg[1].len);
     }
 
-    if (p - echo_cmd->buffer.data != (off_t) size) {  /* just an insurance */
+    if (p - echo_cmd->data.buffer.data != (off_t) size) {
+        /* just as an insurance */
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo internal buffer error: %O != %uz",
-                      p - echo_cmd->buffer.data, size);
+                      p - echo_cmd->data.buffer.data, size);
 
         return NGX_CONF_ERROR;
     }
@@ -1408,7 +1412,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     dd("sleep delay: %d", (int) delay);
 
-    echo_cmd->delay = (ngx_msec_t) delay;
+    echo_cmd->data.delay = (ngx_msec_t) delay;
 
     return NGX_CONF_OK;
 }
@@ -1504,7 +1508,7 @@ ngx_stream_echo_echo_read_bytes(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    echo_cmd->size = bytes;
+    echo_cmd->data.size = bytes;
 
     escf->needs_buffer_in = 1;
 
