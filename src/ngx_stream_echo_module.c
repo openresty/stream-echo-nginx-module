@@ -27,6 +27,7 @@ typedef enum {
 } ngx_stream_echo_opcode_t;
 
 
+#pragma warning(disable : 4201)
 typedef struct {
     union {
         ngx_str_t       buffer;
@@ -34,6 +35,7 @@ typedef struct {
     };
     ngx_stream_echo_opcode_t      opcode;
 } ngx_stream_echo_cmd_t;
+#pragma warning(default : 4201)
 
 
 typedef struct {
@@ -838,7 +840,7 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     size_t           size;
     ssize_t          n;
     ngx_str_t       *opt, *arg;
-    ngx_uint_t       i;
+    ngx_uint_t       i, i2;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -855,6 +857,7 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* handle options */
 
     opt = opts.elts;
+    i2 = 0;
 
     for (i = 0; i < opts.nelts; i++) {
 
@@ -862,6 +865,10 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                       "stream echo sees unknown option \"-%*s\" "
                       "in \"echo_duplicate\"", opt[i].len, opt[i].data);
 
+        i2 = 1;
+    }
+
+    if (i2 > 0) {
         return NGX_CONF_ERROR;
     }
 
@@ -965,7 +972,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t       *opt, *arg;
     ngx_int_t        delay;  /* in msec */
-    ngx_uint_t       i;
+    ngx_uint_t       i, i2;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -980,6 +987,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* handle options */
 
     opt = opts.elts;
+    i2 = 0;
 
     for (i = 0; i < opts.nelts; i++) {
 
@@ -987,6 +995,10 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                       "stream echo sees unknown option \"-%*s\" "
                       "in \"echo_sleep\"", opt[i].len, opt[i].data);
 
+        i2 = 1;
+    }
+
+    if (i2 > 0) {
         return NGX_CONF_ERROR;
     }
 
@@ -1024,7 +1036,7 @@ static char *
 ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_str_t       *opt;
-    ngx_uint_t       i;
+    ngx_uint_t       i, i2;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -1039,6 +1051,7 @@ ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     /* handle options */
 
     opt = opts.elts;
+    i2 = 0;
 
     for (i = 0; i < opts.nelts; i++) {
 
@@ -1046,6 +1059,10 @@ ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                       "stream echo sees unknown option \"-%*s\" "
                       "in \"echo_flush_wait\"", opt[i].len, opt[i].data);
 
+        i2 = 1;
+    }
+
+    if (i2 > 0) {
         return NGX_CONF_ERROR;
     }
 
