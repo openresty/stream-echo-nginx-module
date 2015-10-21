@@ -152,3 +152,21 @@ qr/\[info\] .*? stream client read timed out/,
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 9: unknown option
+--- stream_server_config
+    echo_read_bytes -t;
+    echo_request_data;
+
+--- stream_request chop
+ab
+--- stream_response chop
+
+--- error_log eval
+qr/\[emerg\] .*?stream echo sees unknown option "-t" in "echo_read_bytes"/
+--- no_error_log
+[error]
+[alert]
+--- must_die

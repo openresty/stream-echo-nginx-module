@@ -19,6 +19,7 @@ Table of Contents
     * [echo_sleep](#echo_sleep)
     * [echo_send_timeout](#echo_send_timeout)
     * [echo_read_bytes](#echo_read_bytes)
+    * [echo_read_line](#echo_read_line)
     * [echo_request_data](#echo_request_data)
     * [echo_read_buffer_size](#echo_read_buffer_size)
     * [echo_read_timeout](#echo_read_timeout)
@@ -363,6 +364,30 @@ reads 4KB of data.
 
 This command would not return (until timeout) until exactly the acount of data has been
 read as specified.
+
+The timeout threshold is subject to the [echo_read_timeout](#echo_read_timeout) directive.
+
+The data read (in the "reading buffer") can later be output by the [echo_request_data](#echo_request_data)
+directive.
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_read_line
+---------------
+**syntax:** *echo_read_line;*
+
+**default:** *no*
+
+**context:** *server*
+
+Reads the request data of the specified size and append it into the "reading buffer".
+The size of the buffer is controlled by the [echo_read_buffer_size](#echo_read_buffer_size)
+directive. The length of data read by this command cannot exceed the
+[echo_read_buffer_size](#echo_read_buffer_size) setting.
 
 The timeout threshold is subject to the [echo_read_timeout](#echo_read_timeout) directive.
 
