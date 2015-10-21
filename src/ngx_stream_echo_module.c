@@ -1538,21 +1538,24 @@ ngx_stream_echo_helper(ngx_conf_t *cf, ngx_command_t *cmd, void *conf,
 
     echo_cmd->opcode = opcode;
 
-    if (ngx_array_init(args, cf->temp_pool, cf->args->nelts - 1,
-                       sizeof(ngx_str_t))
-        == NGX_ERROR)
-    {
-        return NULL;
-    }
+    if (args != NULL && opts != NULL) {
 
-    if (ngx_array_init(opts, cf->temp_pool, 1, sizeof(ngx_str_t))
-        == NGX_ERROR)
-    {
-        return NULL;
-    }
+        if (ngx_array_init(args, cf->temp_pool, cf->args->nelts - 1,
+                           sizeof(ngx_str_t))
+            == NGX_ERROR)
+        {
+            return NULL;
+        }
 
-    if (ngx_stream_echo_eval_args(cf->args, 1, args, opts) != NGX_OK) {
-        return NULL;
+        if (ngx_array_init(opts, cf->temp_pool, 1, sizeof(ngx_str_t))
+            == NGX_ERROR)
+        {
+            return NULL;
+        }
+
+        if (ngx_stream_echo_eval_args(cf->args, 1, args, opts) != NGX_OK) {
+            return NULL;
+        }
     }
 
     return echo_cmd;
@@ -1751,13 +1754,11 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_array_t      opts, args;
-
     ngx_stream_echo_cmd_t     *echo_cmd;
 
     echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
                                       NGX_STREAM_ECHO_OPCODE_FLUSH_WAIT,
-                                      &args, &opts);
+                                      NULL, NULL);
     if (echo_cmd == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -1832,12 +1833,11 @@ ngx_stream_echo_echo_read_line(ngx_conf_t *cf, ngx_command_t *cmd,
 {
     ngx_stream_echo_srv_conf_t  *escf = conf;
 
-    ngx_array_t             opts, args;
     ngx_stream_echo_cmd_t  *echo_cmd;
 
     echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
                                       NGX_STREAM_ECHO_OPCODE_READ_LINE,
-                                      &args, &opts);
+                                      NULL, NULL);
     if (echo_cmd == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -1852,12 +1852,11 @@ static char *
 ngx_stream_echo_echo_request_data(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf)
 {
-    ngx_array_t              opts, args;
     ngx_stream_echo_cmd_t   *echo_cmd;
 
     echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
                                       NGX_STREAM_ECHO_OPCODE_ECHO_REQ,
-                                      &args, &opts);
+                                      NULL, NULL);
     if (echo_cmd == NULL) {
         return NGX_CONF_ERROR;
     }
