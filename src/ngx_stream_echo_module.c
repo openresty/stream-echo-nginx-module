@@ -203,7 +203,7 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
       NULL },
 
     { ngx_string("echo_flush_wait"),
-      NGX_STREAM_SRV_CONF|NGX_CONF_ANY,
+      NGX_STREAM_SRV_CONF|NGX_CONF_NOARGS,
       ngx_stream_echo_echo_flush_wait,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
@@ -1588,7 +1588,7 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_duplicate\"", opt[0].len, opt[0].data);
+                      "in \"%V\"", opt[0].len, opt[0].data, &cmd->name);
 
         return NGX_CONF_ERROR;
     }
@@ -1597,7 +1597,7 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo requires two value arguments in "
-                      "\"echo_duplicate\" but got %ui", args.nelts);
+                      "\"%V\" but got %ui", &cmd->name, args.nelts);
 
         return NGX_CONF_ERROR;
     }
@@ -1617,7 +1617,7 @@ ngx_stream_echo_echo_duplicate(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo: bad \"n\" argument, \"%*s\", "
-                      "in \"echo_duplicate\"", arg[0].len, arg[0].data);
+                      "in \"%V\"", arg[0].len, arg[0].data, &cmd->name);
 
         return NGX_CONF_ERROR;
     }
@@ -1713,7 +1713,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_sleep\"", opt[0].len, opt[0].data);
+                      "in \"%V\"", opt[0].len, opt[0].data, &cmd->name);
 
         return NGX_CONF_ERROR;
     }
@@ -1722,7 +1722,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo requires one value argument in "
-                      "\"echo_sleep\" but got %ui", args.nelts);
+                      "\"%V\" but got %ui", &cmd->name, args.nelts);
 
         return NGX_CONF_ERROR;
     }
@@ -1735,7 +1735,7 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
         ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
                       "stream echo: bad \"delay\" argument, \"%*s\", "
-                      "in \"echo_sleep\"", arg[0].len, arg[0].data);
+                      "in \"%V\"", arg[0].len, arg[0].data, &cmd->name);
 
         return NGX_CONF_ERROR;
     }
@@ -1751,7 +1751,6 @@ ngx_stream_echo_echo_sleep(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_str_t       *opt;
     ngx_array_t      opts, args;
 
     ngx_stream_echo_cmd_t     *echo_cmd;
@@ -1760,28 +1759,6 @@ ngx_stream_echo_echo_flush_wait(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                                       NGX_STREAM_ECHO_OPCODE_FLUSH_WAIT,
                                       &args, &opts);
     if (echo_cmd == NULL) {
-        return NGX_CONF_ERROR;
-    }
-
-    /* handle options */
-
-    opt = opts.elts;
-
-    if (opts.nelts > 0) {
-
-        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
-                      "stream echo sees unknown option \"-%*s\" "
-                      "in \"echo_flush_wait\"", opt[0].len, opt[0].data);
-
-        return NGX_CONF_ERROR;
-    }
-
-    if (args.nelts != 0) {
-
-        ngx_log_error(NGX_LOG_EMERG, cf->log, 0,
-                      "stream echo takes no value arguments in "
-                      "\"echo_flush_wait\" but got %ui", args.nelts);
-
         return NGX_CONF_ERROR;
     }
 

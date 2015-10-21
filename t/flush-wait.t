@@ -31,22 +31,8 @@ stream echo running flush-wait (busy:
 echo_flush_wait 2;
 
 --- error_log eval
-qr/\[emerg\] .*?stream echo takes no value arguments in "echo_flush_wait" but got 1\b/
+qr/\[emerg\] .*?invalid number of arguments in "echo_flush_wait" directive/
 --- no_error_log
 [error]
 [alert]
 --- must_die
-
-
-
-=== TEST 3: --
---- stream_server_config
-echo_flush_wait --;
-echo ok;
-
---- stream_response
-ok
---- error_log eval
---- no_error_log
-[error]
-[alert]
