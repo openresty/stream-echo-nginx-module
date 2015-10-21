@@ -45,6 +45,10 @@ typedef struct {
 
     ngx_uint_t       log_level;
 
+    ngx_uint_t       lingering_close;
+    ngx_msec_t       lingering_time;
+    ngx_msec_t       lingering_timeout;
+
     size_t           read_buffer_size;
     unsigned         needs_buffer_in;   /* :1 */
 } ngx_stream_echo_srv_conf_t;
@@ -64,12 +68,26 @@ typedef struct {
 
     ngx_buf_t                       *buffer_in;
     ngx_str_t                        request;
+
+    ngx_msec_t                       lingering_time;
     size_t                           rest;
 
     unsigned                         writing_req:1;
     unsigned                         waiting_flush:1;
     unsigned                         done:1;
 } ngx_stream_echo_ctx_t;
+
+
+enum {
+    NGX_STREAM_ECHO_LINGERING_OFF = 0,
+    NGX_STREAM_ECHO_LINGERING_ON,
+    NGX_STREAM_ECHO_LINGERING_ALWAYS
+};
+
+
+enum {
+    NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE = 4096
+};
 
 
 static void ngx_stream_echo_handler(ngx_stream_session_t *s);
@@ -88,15 +106,19 @@ static ngx_int_t ngx_stream_echo_exec_read_bytes(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
 static ngx_int_t ngx_stream_echo_do_read_bytes(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx);
-static void ngx_stream_echo_read_bytes_handler(ngx_event_t *ev);
+static void ngx_stream_echo_read_bytes_handler(ngx_event_t *rev);
 static ngx_int_t ngx_stream_echo_exec_echo_req(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
-static void ngx_stream_echo_writer(ngx_event_t *ev);
+static void ngx_stream_echo_writer(ngx_event_t *wev);
 static void ngx_stream_echo_adjust_buffer_in(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_chain_t *out);
 static void ngx_stream_echo_sleep_event_handler(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
 static void ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc);
+static void ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx);
+static void ngx_stream_echo_lingering_close_handler(ngx_event_t *rev);
+static void ngx_stream_echo_empty_handler(ngx_event_t *wev);
 static ngx_stream_echo_ctx_t *
     ngx_stream_echo_create_ctx(ngx_stream_session_t *s);
 static char *ngx_stream_echo_echo(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -125,6 +147,14 @@ static ngx_conf_enum_t  ngx_stream_echo_client_error_log_levels[] = {
     { ngx_string("notice"), NGX_LOG_NOTICE },
     { ngx_string("warn"), NGX_LOG_WARN },
     { ngx_string("error"), NGX_LOG_ERR },
+    { ngx_null_string, 0 }
+};
+
+
+static ngx_conf_enum_t  ngx_stream_echo_lingering_close[] = {
+    { ngx_string("off"), NGX_STREAM_ECHO_LINGERING_OFF },
+    { ngx_string("on"), NGX_STREAM_ECHO_LINGERING_ON },
+    { ngx_string("always"), NGX_STREAM_ECHO_LINGERING_ALWAYS },
     { ngx_null_string, 0 }
 };
 
@@ -201,6 +231,27 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
       offsetof(ngx_stream_echo_srv_conf_t, log_level),
       &ngx_stream_echo_client_error_log_levels },
 
+    { ngx_string("echo_lingering_close"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_enum_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_echo_srv_conf_t, lingering_close),
+      &ngx_stream_echo_lingering_close },
+
+    { ngx_string("echo_lingering_time"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_msec_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_echo_srv_conf_t, lingering_time),
+      NULL },
+
+    { ngx_string("echo_lingering_timeout"),
+      NGX_STREAM_MAIN_CONF|NGX_STREAM_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_msec_slot,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      offsetof(ngx_stream_echo_srv_conf_t, lingering_timeout),
+      NULL },
+
       ngx_null_command
 };
 
@@ -241,6 +292,7 @@ ngx_stream_echo_handler(ngx_stream_session_t *s)
 
     escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
     if (escf->cmds.nelts == 0) {
+        /* cannot really happen */
         ngx_stream_echo_finalize(s, NGX_DECLINED);
         return;
     }
@@ -622,6 +674,7 @@ ngx_stream_echo_do_read_bytes(ngx_stream_session_t *s,
         }
 
         if (n > 0) {
+
             b->last += n;
 
             if (n >= (ssize_t) ctx->rest) {
@@ -653,12 +706,14 @@ ngx_stream_echo_do_read_bytes(ngx_stream_session_t *s,
                    "stream echo read bytes completed successfully (len=%uz)",
                    ctx->request.len);
 
+    dd("read request: %.*s", (int) ctx->request.len, ctx->request.data);
+
     return NGX_OK;
 }
 
 
 static void
-ngx_stream_echo_read_bytes_handler(ngx_event_t *ev)
+ngx_stream_echo_read_bytes_handler(ngx_event_t *rev)
 {
     ngx_int_t                rc;
     ngx_connection_t        *c;
@@ -667,13 +722,13 @@ ngx_stream_echo_read_bytes_handler(ngx_event_t *ev)
 
     ngx_stream_echo_srv_conf_t  *escf;
 
-    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, ev->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, rev->log, 0,
                    "stream echo read bytes event handler");
 
-    c = ev->data;
+    c = rev->data;
     s = c->data;
 
-    if (ev->timedout) {
+    if (rev->timedout) {
         escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
 
         ngx_log_error(escf->log_level, c->log, NGX_ETIMEDOUT,
@@ -827,7 +882,7 @@ ngx_stream_echo_adjust_buffer_in(ngx_stream_session_t *s,
 
 
 static void
-ngx_stream_echo_writer(ngx_event_t *ev)
+ngx_stream_echo_writer(ngx_event_t *wev)
 {
     ngx_int_t                    rc;
     ngx_chain_t                 *out;
@@ -836,13 +891,13 @@ ngx_stream_echo_writer(ngx_event_t *ev)
     ngx_stream_echo_ctx_t       *ctx;
     ngx_stream_echo_srv_conf_t  *escf;
 
-    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, ev->log, 0,
+    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, wev->log, 0,
                    "stream echo writer handler");
 
-    c = ev->data;
+    c = wev->data;
     s = c->data;
 
-    if (ev->timedout) {
+    if (wev->timedout) {
         escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
 
         ngx_log_error(escf->log_level, c->log, NGX_ETIMEDOUT,
@@ -978,19 +1033,24 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
     c = s->connection;
 
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
-                   "stream echo finalize session: rc=%i", rc);
-
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
+                   "stream echo finalize: rc=%i", rc);
 
     if (rc == NGX_ERROR || rc == NGX_DECLINED) {
-        goto done;
+        ngx_stream_close_connection(c);
+        return;
     }
 
-    if (ctx && ctx->busy) { /* having pending data to be sent */
+    escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
+
+    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
+    if (ctx == NULL) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    if (ctx->busy) { /* having pending data to be sent */
 
         if (!c->write->ready) {
-            escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
-
             ngx_add_timer(c->write, escf->send_timeout);
 
         } else if (c->write->timer_set) {
@@ -1011,7 +1071,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
         {
             dd("done: ctx->busy: %p", ctx->busy);
 
-            if (ctx && ctx->busy == NULL) {
+            if (ctx->busy == NULL) {
                 if (ngx_del_event(c->write, NGX_WRITE_EVENT, 0) != NGX_OK) {
                     ngx_stream_close_connection(c);
                 }
@@ -1023,15 +1083,158 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 
     /* rc == NGX_OK || rc == NGX_AGAIN */
 
-    if (ctx == NULL) {
-        goto done;
+#if (DDEBUG)
+    dd("c->buffered: %d, busy: %p, rev ready: %d", (int) c->buffered,
+       ctx->busy, c->read->ready);
+
+    dd("request len:%d, last: %p", (int) ctx->request.len,
+       ctx->request.data + ctx->request.len);
+
+    if (ctx->buffer_in) {
+        dd("buffer_in start: %p, pos: %p, last: %p", ctx->buffer_in->start,
+           ctx->buffer_in->pos, ctx->buffer_in->last);
+    }
+#endif
+
+    if (escf->lingering_close == NGX_STREAM_ECHO_LINGERING_ALWAYS
+        || (escf->lingering_close == NGX_STREAM_ECHO_LINGERING_ON
+            && ((ctx->buffer_in &&
+                   ctx->request.data + ctx->request.len
+                   < ctx->buffer_in->last)
+                || c->read->ready)))
+    {
+        ngx_stream_echo_set_lingering_close(s, ctx);
+        return;
     }
 
-    dd("c->buffered: %d, busy: %p", (int) c->buffered, ctx->busy);
-
-done:
-
     ngx_stream_close_connection(c);
+    return;
+}
+
+
+static void
+ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx)
+{
+    ngx_event_t                 *rev, *wev;
+    ngx_connection_t            *c;
+    ngx_stream_echo_srv_conf_t  *escf;
+
+    c = s->connection;
+
+    escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
+
+    rev = c->read;
+    rev->handler = ngx_stream_echo_lingering_close_handler;
+
+    ctx->lingering_time = ngx_time() * 1000 + escf->lingering_time;
+    ngx_add_timer(rev, escf->lingering_timeout);
+
+    if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    wev = c->write;
+    wev->handler = ngx_stream_echo_empty_handler;
+
+    if (wev->active && (ngx_event_flags & NGX_USE_LEVEL_EVENT)) {
+        if (ngx_del_event(wev, NGX_WRITE_EVENT, 0) != NGX_OK) {
+            ngx_stream_close_connection(c);
+            return;
+        }
+    }
+
+    if (ngx_shutdown_socket(c->fd, NGX_WRITE_SHUTDOWN) == -1) {
+        ngx_connection_error(c, ngx_socket_errno,
+                             ngx_shutdown_socket_n " failed");
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    if (rev->ready) {
+        ngx_stream_echo_lingering_close_handler(rev);
+    }
+}
+
+
+static void
+ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
+{
+    u_char                       buffer[NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE];
+    ssize_t                      n;
+    ngx_msec_t                   timer;
+    ngx_connection_t            *c;
+    ngx_stream_session_t        *s;
+    ngx_stream_echo_ctx_t       *ctx;
+    ngx_stream_echo_srv_conf_t  *escf;
+
+    c = rev->data;
+    s = c->data;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, c->log, 0,
+                   "stream echo lingering close handler");
+
+    if (rev->timedout) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
+    if (ctx == NULL) {
+        return;
+    }
+
+    timer = ctx->lingering_time - ngx_time() * 1000;
+    if ((ngx_msec_int_t) timer <= 0) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    do {
+        n = c->recv(c, buffer, NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE);
+
+        ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
+                       "stream echo lingering read: %d", n);
+
+        if (n == NGX_ERROR || n == 0) {
+            ngx_stream_close_connection(c);
+            return;
+        }
+
+#if (NGX_HAVE_EPOLL)
+        if ((ngx_event_flags & NGX_USE_EPOLL_EVENT)
+            && n < NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE)
+        {
+            /* the current socket is of the stream type,
+             * so we don't have to read until EAGAIN
+             * with epoll ET, reducing one syscall. */
+            rev->ready = 0;
+        }
+#endif
+
+    } while (rev->ready);
+
+    if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
+
+    if (timer > escf->lingering_timeout) {
+        timer = escf->lingering_timeout;
+    }
+
+    ngx_add_timer(rev, timer);
+}
+
+
+static void
+ngx_stream_echo_empty_handler(ngx_event_t *wev)
+{
+    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, wev->log, 0,
+                   "stream echo empty handler");
     return;
 }
 
@@ -1559,6 +1762,10 @@ ngx_stream_echo_create_srv_conf(ngx_conf_t *cf)
     conf->read_buffer_size = NGX_CONF_UNSET_SIZE;
     conf->needs_buffer_in = 0;
 
+    conf->lingering_close = NGX_CONF_UNSET_UINT;
+    conf->lingering_time = NGX_CONF_UNSET_MSEC;
+    conf->lingering_timeout = NGX_CONF_UNSET_MSEC;
+
     return conf;
 }
 
@@ -1582,6 +1789,18 @@ ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 
     ngx_conf_merge_size_value(conf->read_buffer_size, prev->read_buffer_size,
                               1024);
+
+    if (prev->needs_buffer_in) {
+        conf->needs_buffer_in = prev->needs_buffer_in;
+    }
+
+    ngx_conf_merge_uint_value(conf->lingering_close,
+                              prev->lingering_close,
+                              NGX_STREAM_ECHO_LINGERING_ON);
+    ngx_conf_merge_msec_value(conf->lingering_time,
+                              prev->lingering_time, 30000);
+    ngx_conf_merge_msec_value(conf->lingering_timeout,
+                              prev->lingering_timeout, 5000);
 
     return NGX_CONF_OK;
 }

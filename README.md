@@ -23,6 +23,9 @@ Table of Contents
     * [echo_read_buffer_size](#echo_read_buffer_size)
     * [echo_read_timeout](#echo_read_timeout)
     * [echo_client_error_log_level](#echo_client_error_log_level)
+    * [echo_lingering_close](#echo_lingering_close)
+    * [echo_lingering_time](#echo_lingering_time)
+    * [echo_lingering_timeout](#echo_lingering_timeout)
 * [Caveats](#caveats)
 * [TODO](#todo)
 * [Installation](#installation)
@@ -438,6 +441,66 @@ flooding the server error log files (which can be quite expensive).
 
 [Back to TOC](#table-of-contents)
 
+echo_lingering_close
+--------------------
+**syntax:** *echo_lingering_close off | on | always*
+
+**default:** *echo_lingering_close on*
+
+**context:** *stream, server*
+
+Controls how nginx closes client connections.
+
+The default value `on` instructs nginx to wait for and process (read and discard) additional
+data from a client before fully closing a connection, but only if
+heuristics suggests that a client may be sending more data (like there is
+unprocessed pre-read data in the "reading buffer" or the socket is still
+ready for reading).
+
+The value `always` will cause nginx to unconditionally wait for and process
+additional client data.
+
+The value `off` tells nginx to never wait for more data and close
+the connection immediately. This behavior breaks the protocol and may result in
+interrupting RST packets sent. Thus this configuration value should
+not be used under normal circumstances.
+
+How long nginx should wait is controlled by both the [echo_lingering_time](#echo_lingering_time)
+and [echo_lingering_timeout](#echo_lingering_timeout) directives.
+
+[Back to TOC](#table-of-contents)
+
+echo_lingering_time
+-------------------
+**syntax:** *echo_lingering_time &lt;time&gt;*
+
+**default:** *echo_lingering_time 30s*
+
+**context:** *stream, server*
+
+When [lingering_close](#lingering_close) is in effect, this directive specifies
+the maximum time during which nginx will process (read and ignore) additional data
+coming from a client. After that, the connection will be closed, even if there will
+be more data.
+
+[Back to TOC](#table-of-contents)
+
+echo_lingering_timeout
+----------------------
+**syntax:** *echo_lingering_timeout &lt;time&gt;*
+
+**default:** *echo_lingering_timeout 5s*
+
+**context:** *stream, server*
+
+When lingering_close is in effect, this directive specifies the maximum waiting time between
+successive arrivals of client data. If data is not received during this time,
+the connection is closed. Otherwise, the data are read and ignored, and nginx
+starts waiting for more data again. The “wait-read-ignore” cycle is repeated,
+but no longer than specified by the [lingering_time](#lingering_time) directive.
+
+[Back to TOC](#table-of-contents)
+
 Caveats
 =======
 
@@ -449,7 +512,6 @@ support since NGINX variables are not supported in the "stream" subsystem of NGI
 TODO
 ====
 
-* port over the "lingering_close" feature of the "http" subsystem.
 * port over the "postpone_output" feature of the "http" subsystem.
 
 [Back to TOC](#table-of-contents)

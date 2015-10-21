@@ -35,6 +35,7 @@ __DATA__
 --- http_config
     lingering_close off;
 --- stream_server_config
+echo_lingering_close off;
 echo ok;
 --- stream_response
 ok
@@ -50,6 +51,7 @@ qr/^(?:event timer add: \d+: 60000:\n)+$/s;
 --- http_config
     lingering_close off;
 --- stream_server_config
+echo_lingering_close off;
 echo_send_timeout 60s;
 echo ok;
 --- stream_response
