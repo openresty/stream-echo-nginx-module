@@ -2,7 +2,7 @@
 
 use t::TestStream;
 
-#repeat_each(2);
+repeat_each(2);
 
 plan tests => repeat_each() * (blocks() * 4 + 3);
 
