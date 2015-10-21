@@ -105,6 +105,7 @@ qr/event timer add: \d+: 543:/
 --- no_error_log
 [error]
 [alert]
+--- wait: 0.2
 
 
 
