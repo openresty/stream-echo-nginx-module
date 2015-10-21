@@ -11,6 +11,7 @@ Table of Contents
 * [Synopsis](#synopsis)
     * [Example 1](#example-1)
     * [Example 2](#example-2)
+    * [Example 3](#example-3)
 * [Description](#description)
 * [Directives](#directives)
     * [echo](#echo)
@@ -113,6 +114,44 @@ after sleep...
  real   0m3.106s
  user   0m0.000s
  sys    0m0.002s
+```
+
+[Back to TOC](#table-of-contents)
+
+Example 3
+---------
+
+```nginx
+stream {
+    server {
+        listen 1234;
+
+        echo_read_buffer_size 2k;
+        echo_read_timeout 60s;
+
+        echo_read_bytes 2;
+        echo -n 'Got prompt: ';
+        echo_request_data;
+        echo;
+
+        echo_read_line;
+        echo -n "Got command: ";
+        echo_request_data;
+    }
+}
+```
+
+```console
+# we type the line ">>print("hello, world")" in the telnet session below.
+
+$ telnet 127.0.0.1 1234
+Trying 127.0.0.1...
+Connected to 127.0.0.1.
+Escape character is '^]'.
+>>print("hello, world!")
+Got prompt: >>
+Got command: print("hello, world!")
+Connection closed by foreign host.
 ```
 
 [Back to TOC](#table-of-contents)
