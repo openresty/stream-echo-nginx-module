@@ -777,7 +777,7 @@ ngx_stream_echo_do_read_request(ngx_stream_session_t *s,
         n = c->recv(c, b->last, size);
 
         ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
-                       "stream echo read bytes recv() returns %z", n);
+                       "stream echo recv() returns %z", n);
 
         if (n == NGX_AGAIN) {
 
@@ -830,7 +830,7 @@ ngx_stream_echo_do_read_request(ngx_stream_session_t *s,
     }
 
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
-                   "stream echo read bytes completed successfully (len=%uz)",
+                   "stream echo reading completed successfully (len=%uz)",
                    ctx->request.len);
 
     dd("read request: %.*s", (int) ctx->request.len, ctx->request.data);

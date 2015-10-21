@@ -86,7 +86,7 @@ howdy, lua!
 
 
 
-=== TEST 5: interleaving read-bytes and read-line
+=== TEST 5: interleaving read-bytes and read-line (simple)
 --- stream_server_config
     echo_read_line;
     echo_read_bytes 3;
@@ -106,7 +106,34 @@ abc
 
 
 
-=== TEST 6: line is too long
+=== TEST 6: interleaving read-bytes and read-line (complex)
+--- stream_server_config
+    echo_read_buffer_size 2k;
+    echo_read_timeout 10s;
+
+    echo_read_bytes 2;
+    echo -n 'Got prompt: ';
+    echo_request_data;
+    echo;
+
+    echo_read_line;
+    echo -n "Got command: ";
+    echo_request_data;
+
+--- stream_request
+>>print("hello, world!")
+--- stream_response
+Got prompt: >>
+Got command: print("hello, world!")
+
+--- no_error_log
+[error]
+[alert]
+--- timeout: 5
+
+
+
+=== TEST 7: line is too long
 --- stream_server_config
     echo_read_line;
     echo_request_data;
@@ -124,3 +151,20 @@ qr/\[error\] .*? stream echo: echo_buffer_size is too small for the request/,
 ]
 --- no_error_log
 [alert]
+
+
+
+=== TEST 8: read a partial line
+--- stream_server_config
+    echo_read_line;
+    echo_request_data;
+
+--- stream_request chop
+hello, world!
+--- stream_response chop
+hello, world!
+
+--- no_error_log
+[error]
+[alert]
+--- SKIP
