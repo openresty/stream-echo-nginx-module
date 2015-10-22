@@ -12,6 +12,7 @@ Table of Contents
     * [Example 1](#example-1)
     * [Example 2](#example-2)
     * [Example 3](#example-3)
+    * [Example 4](#example-4)
 * [Description](#description)
 * [Directives](#directives)
     * [echo](#echo)
@@ -153,6 +154,28 @@ Escape character is '^]'.
 Got prompt: >>
 Got command: print("hello, world!")
 Connection closed by foreign host.
+```
+
+[Back to TOC](#table-of-contents)
+
+Example 4
+---------
+
+```nginx
+stream {
+    server {
+        listen 1999;
+
+        # emulate a blackhole that swallows any incoming TCP
+        # messages greedily like a logging service.
+        # this can be used to mock up a logging service like
+        # syslog-ng (TCP), which is much more efficient than
+        # a typical netcat (nc) server.
+
+        echo_discard_request;
+        echo_sleep 3600;    # in sec
+    }
+}
 ```
 
 [Back to TOC](#table-of-contents)
