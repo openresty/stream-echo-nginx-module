@@ -88,7 +88,7 @@ qr/event timer add: \d+: 321:/
 
 === TEST 5: lingering_time
 --- stream_server_config
-    echo_lingering_time 543ms;
+    echo_lingering_time 1s;
 
     echo_read_bytes 3;
     echo_request_data;
@@ -100,7 +100,7 @@ hello, world!
 hel
 
 --- error_log eval
-qr/event timer add: \d+: 543:/
+qr/event timer add: \d+: 1000:/
 
 --- no_error_log
 [error]

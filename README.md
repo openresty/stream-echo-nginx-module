@@ -22,6 +22,7 @@ Table of Contents
     * [echo_read_bytes](#echo_read_bytes)
     * [echo_read_line](#echo_read_line)
     * [echo_request_data](#echo_request_data)
+    * [echo_discard_request](#echo_discard_request)
     * [echo_read_buffer_size](#echo_read_buffer_size)
     * [echo_read_timeout](#echo_read_timeout)
     * [echo_client_error_log_level](#echo_client_error_log_level)
@@ -452,6 +453,29 @@ clears all the data in the "reading buffer".
 
 Unlike [echo](#echo) or [echo_duplicate](#echo_duplicate), this command does not return
 until all the data is actually flushed into the system socket send buffer. Or in other words, this command is a synchronous operation (but still doing nonblocking I/O, of course).
+
+This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
+freely in the same server. The module
+handler will run them sequentially in the same order of their appearance in the NGINX configuration file.
+
+[Back to TOC](#table-of-contents)
+
+echo_discard_request
+--------------------
+**syntax:** *echo_discard_request*
+
+**default:** *no*
+
+**context:** *server*
+
+Discards any request data already pre-read in the "reading buffer" or any future
+incoming request data.
+
+This command is an asynchronous operation which returns immediately without waiting for
+all the incoming request.
+
+Once this command is executed, any subsequent request reading commands like [echo_read_line](#echo_read_line)
+are disallowed.
 
 This command can be mixed with other `echo*` commands (like [echo](#echo) and [echo_duplicate](#echo_duplicate))
 freely in the same server. The module

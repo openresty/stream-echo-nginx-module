@@ -23,7 +23,8 @@ typedef enum {
     NGX_STREAM_ECHO_OPCODE_FLUSH_WAIT,      /* for "echo_flush_wait" */
     NGX_STREAM_ECHO_OPCODE_READ_BYTES,      /* for "echo_read_bytes" */
     NGX_STREAM_ECHO_OPCODE_READ_LINE,       /* for "echo_read_line" */
-    NGX_STREAM_ECHO_OPCODE_ECHO_REQ         /* for "echo_request_data" */
+    NGX_STREAM_ECHO_OPCODE_ECHO_REQ,        /* for "echo_request_data" */
+    NGX_STREAM_ECHO_OPCODE_DISCARD_REQ,     /* for "echo_discard_request" */
 } ngx_stream_echo_opcode_t;
 
 
@@ -77,15 +78,18 @@ struct ngx_stream_echo_ctx_s {
     ngx_buf_t                               *buffer_in;
     ngx_str_t                                request;
 
-    ngx_msec_t                               lingering_time;
+    time_t                                   lingering_time;
 
     ngx_stream_echo_filter_handler_pt        input_filter;
 
     size_t                                   rest;
 
+    unsigned                                 discard_req:1;
     unsigned                                 writing_req:1;
+
     unsigned                                 waiting_flush:1;
     unsigned                                 eof:1;
+
     unsigned                                 done:1;
 };
 
@@ -98,7 +102,8 @@ enum {
 
 
 enum {
-    NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE = 4096
+    NGX_STREAM_ECHO_LINGERING_BUFFER_SIZE = 4096,
+    NGX_STREAM_ECHO_DISCARD_BUFFER_SIZE   = 4096
 };
 
 
@@ -127,9 +132,15 @@ static ngx_int_t ngx_stream_echo_do_read_request(ngx_stream_session_t *s,
 static void ngx_stream_echo_read_request_handler(ngx_event_t *rev);
 static ngx_int_t ngx_stream_echo_exec_echo_req(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
-static void ngx_stream_echo_writer(ngx_event_t *wev);
 static void ngx_stream_echo_adjust_buffer_in(ngx_stream_session_t *s,
     ngx_stream_echo_ctx_t *ctx, ngx_chain_t *out);
+static ngx_int_t
+    ngx_stream_echo_exec_discard_req(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd);
+static void ngx_stream_echo_discarded_request_handler(ngx_event_t *rev);
+static ngx_int_t
+    ngx_stream_echo_read_discarded_request(ngx_stream_session_t *s);
+static void ngx_stream_echo_writer(ngx_event_t *wev);
 static void ngx_stream_echo_sleep_event_handler(ngx_event_t *ev);
 static void ngx_stream_echo_block_reading(ngx_event_t *ev);
 static void ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc);
@@ -156,6 +167,8 @@ static char *ngx_stream_echo_echo_read_bytes(ngx_conf_t *cf,
 static char *ngx_stream_echo_echo_read_line(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
 static char *ngx_stream_echo_echo_request_data(ngx_conf_t *cf,
+    ngx_command_t *cmd, void *conf);
+static char *ngx_stream_echo_echo_discard_request(ngx_conf_t *cf,
     ngx_command_t *cmd, void *conf);
 static void *ngx_stream_echo_create_srv_conf(ngx_conf_t *cf);
 static char *ngx_stream_echo_merge_srv_conf(ngx_conf_t *cf,
@@ -226,6 +239,13 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
     { ngx_string("echo_request_data"),
       NGX_STREAM_SRV_CONF|NGX_CONF_NOARGS,
       ngx_stream_echo_echo_request_data,
+      NGX_STREAM_SRV_CONF_OFFSET,
+      0,
+      NULL },
+
+    { ngx_string("echo_discard_request"),
+      NGX_STREAM_SRV_CONF|NGX_CONF_NOARGS,
+      ngx_stream_echo_echo_discard_request,
       NGX_STREAM_SRV_CONF_OFFSET,
       0,
       NULL },
@@ -432,6 +452,10 @@ ngx_stream_echo_run_cmds(ngx_stream_session_t *s)
             rc = ngx_stream_echo_exec_echo_req(s, ctx, &cmd[ctx->cmd_index]);
             break;
 
+        case NGX_STREAM_ECHO_OPCODE_DISCARD_REQ:
+            rc = ngx_stream_echo_exec_discard_req(s, ctx, &cmd[ctx->cmd_index]);
+            break;
+
         default:
             ngx_log_error(NGX_LOG_ERR, c->log, 0,
                           "stream echo unknown opcode: %d",
@@ -624,6 +648,13 @@ ngx_stream_echo_exec_read_bytes(ngx_stream_session_t *s,
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running read-bytes (busy: %p)", ctx->busy);
 
+    if (ctx->discard_req) {
+        ngx_log_error(NGX_LOG_CRIT, c->log, 0,
+                      "stream echo: echo_read_bytes not allowed after "
+                      "echo_discard_request");
+        return NGX_ERROR;
+    }
+
     ctx->rest = cmd->data.size;
     ctx->input_filter = ngx_stream_echo_read_bytes_filter;
 
@@ -694,6 +725,13 @@ ngx_stream_echo_exec_read_line(ngx_stream_session_t *s,
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running read-line (busy: %p)", ctx->busy);
 
+    if (ctx->discard_req) {
+        ngx_log_error(NGX_LOG_CRIT, c->log, 0,
+                      "stream echo: echo_read_line not allowed after "
+                      "echo_discard_request");
+        return NGX_ERROR;
+    }
+
     ctx->rest = cmd->data.size;
     ctx->input_filter = ngx_stream_echo_read_line_filter;
 
@@ -728,6 +766,9 @@ ngx_stream_echo_read_line_filter(ngx_stream_session_t *s,
     p = req->data + req->len;
 
     len = ctx->buffer_in->last - p;
+    if (len == 0) {
+        return NGX_AGAIN;
+    }
 
     q = memchr(p, LF, len);
     if (q == NULL) {
@@ -905,7 +946,7 @@ ngx_stream_echo_exec_echo_req(ngx_stream_session_t *s,
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running echo-request (busy: %p)", ctx->busy);
 
-    if (ctx->request.len == 0) {
+    if (ctx->discard_req || ctx->request.len == 0) {
         /* do nothing */
         return NGX_OK;
     }
@@ -1005,6 +1046,174 @@ ngx_stream_echo_adjust_buffer_in(ngx_stream_session_t *s,
     b->last = b->start + len;
     b->pos = b->start;
     ctx->request.data = b->start;
+}
+
+
+static ngx_int_t
+ngx_stream_echo_exec_discard_req(ngx_stream_session_t *s,
+    ngx_stream_echo_ctx_t *ctx, ngx_stream_echo_cmd_t *cmd)
+{
+    ngx_int_t                rc;
+    ngx_event_t             *rev;
+    ngx_connection_t        *c;
+
+    c = s->connection;
+
+    if (ctx->discard_req) {
+        return NGX_OK;
+    }
+
+    rev = c->read;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_STREAM, rev->log, 0,
+                   "stream echo running discard-request");
+
+    if (rev->timer_set) {
+        ngx_del_timer(rev);
+    }
+
+    rc = ngx_stream_echo_read_discarded_request(s);
+
+    if (rc == NGX_OK) {
+        /* eof found */
+        return NGX_OK;
+    }
+
+    if (rc == NGX_ERROR) {
+        return NGX_ERROR;
+    }
+
+    /* rc == NGX_AGAIN */
+
+    rev->handler = ngx_stream_echo_discarded_request_handler;
+
+    if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+        return NGX_ERROR;
+    }
+
+    ctx->discard_req = 1;
+    ctx->request.len = 0;
+
+    return NGX_OK;
+}
+
+
+static void
+ngx_stream_echo_discarded_request_handler(ngx_event_t *rev)
+{
+    ngx_int_t                    rc;
+    ngx_msec_t                   timer;
+    ngx_connection_t            *c;
+    ngx_stream_session_t        *s;
+    ngx_stream_echo_ctx_t       *ctx;
+    ngx_stream_echo_srv_conf_t  *escf;
+
+    c = rev->data;
+    s = c->data;
+
+    if (rev->timedout) {
+        c->timedout = 1;
+        c->error = 1;
+        ngx_stream_echo_finalize(s, NGX_ERROR);
+        return;
+    }
+
+    ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
+    if (ctx == NULL) {
+        ngx_stream_echo_finalize(s, NGX_ERROR);
+        return;
+    }
+
+    if (ctx->lingering_time) {
+        timer = (ngx_msec_t) ctx->lingering_time - (ngx_msec_t) ngx_time();
+
+        if ((ngx_msec_int_t) timer <= 0) {
+            ngx_stream_echo_finalize(s, NGX_ERROR);
+            return;
+        }
+
+    } else {
+        timer = 0;
+    }
+
+    rc = ngx_stream_echo_read_discarded_request(s);
+
+    if (rc == NGX_OK) {
+        /* eof found */
+        ngx_stream_close_connection(c);
+        return;
+    }
+
+    if (rc == NGX_ERROR) {
+        c->error = 1;
+        ngx_stream_echo_finalize(s, NGX_ERROR);
+        return;
+    }
+
+    /* rc == NGX_AGAIN */
+
+    if (ngx_handle_read_event(rev, 0) != NGX_OK) {
+        c->error = 1;
+        ngx_stream_echo_finalize(s, NGX_ERROR);
+        return;
+    }
+
+    if (timer) {
+
+        escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
+
+        timer *= 1000;
+
+        if (timer > escf->lingering_timeout) {
+            timer = escf->lingering_timeout;
+        }
+
+        ngx_add_timer(rev, timer);
+    }
+}
+
+
+static ngx_int_t
+ngx_stream_echo_read_discarded_request(ngx_stream_session_t *s)
+{
+    u_char               buffer[NGX_STREAM_ECHO_DISCARD_BUFFER_SIZE];
+    ssize_t              n;
+    ngx_connection_t    *c;
+
+    c = s->connection;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "stream echo read discarded request");
+
+    for ( ;; ) {
+#if 0
+        if (!c->read->ready) {
+            return NGX_AGAIN;
+        }
+#endif
+
+        n = c->recv(c, buffer, sizeof(buffer));
+
+        if (n == NGX_ERROR) {
+            c->error = 1;
+            return NGX_OK;
+        }
+
+        if (n == NGX_AGAIN) {
+            return NGX_AGAIN;
+        }
+
+        if (n == 0) {
+            return NGX_OK;
+        }
+
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                       "stream echo read %z bytes of discarded request data",
+                       n);
+    }
+
+    /* cannot really reach here */
+    return NGX_ERROR;
 }
 
 
@@ -1223,6 +1432,11 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
     }
 #endif
 
+    if (c->error) {
+        ngx_stream_close_connection(c);
+        return;
+    }
+
     if (escf->lingering_close == NGX_STREAM_ECHO_LINGERING_ALWAYS
         || (escf->lingering_close == NGX_STREAM_ECHO_LINGERING_ON
             && ((ctx->buffer_in &&
@@ -1233,6 +1447,8 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
         ngx_stream_echo_set_lingering_close(s, ctx);
         return;
     }
+
+    dd("closing connection upon successful completion");
 
     ngx_stream_close_connection(c);
     return;
@@ -1254,7 +1470,7 @@ ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
     rev = c->read;
     rev->handler = ngx_stream_echo_lingering_close_handler;
 
-    ctx->lingering_time = ngx_time() * 1000 + escf->lingering_time;
+    ctx->lingering_time = ngx_time() + (time_t) (escf->lingering_time / 1000);
     ngx_add_timer(rev, escf->lingering_timeout);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
@@ -1312,7 +1528,7 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
         return;
     }
 
-    timer = ctx->lingering_time - ngx_time() * 1000;
+    timer = (ngx_msec_t) ctx->lingering_time - (ngx_msec_t) ngx_time();
     if ((ngx_msec_int_t) timer <= 0) {
         ngx_stream_close_connection(c);
         return;
@@ -1348,6 +1564,8 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
     }
 
     escf = ngx_stream_get_module_srv_conf(s, ngx_stream_echo_module);
+
+    timer *= 1000;
 
     if (timer > escf->lingering_timeout) {
         timer = escf->lingering_timeout;
@@ -1399,8 +1617,11 @@ ngx_stream_echo_create_ctx(ngx_stream_session_t *s)
      *      ctx->buffer_in = NULL;
      *      ctx->request.data = NULL;
      *      ctx->request.len = 0;
+     *      ctx->discard_req = 0;
+     *      ctx->writing_req = 0;
      *      ctx->waiting_flush = 0;
      *      ctx->done = 0;
+     *      ctx->lingering_time = 0;
      */
 
     return ctx;
@@ -1856,6 +2077,23 @@ ngx_stream_echo_echo_request_data(ngx_conf_t *cf, ngx_command_t *cmd,
 
     echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
                                       NGX_STREAM_ECHO_OPCODE_ECHO_REQ,
+                                      NULL, NULL);
+    if (echo_cmd == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    return NGX_CONF_OK;
+}
+
+
+static char *
+ngx_stream_echo_echo_discard_request(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf)
+{
+    ngx_stream_echo_cmd_t   *echo_cmd;
+
+    echo_cmd = ngx_stream_echo_helper(cf, cmd, conf,
+                                      NGX_STREAM_ECHO_OPCODE_DISCARD_REQ,
                                       NULL, NULL);
     if (echo_cmd == NULL) {
         return NGX_CONF_ERROR;
