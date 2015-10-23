@@ -623,7 +623,17 @@ support since NGINX variables are not supported in the "stream" subsystem of NGI
 TODO
 ====
 
-* port over the "postpone_output" feature of the "http" subsystem.
+* Implement the `echo_test_request_data` directive to test existing data read in the "reading buffer"
+with a literal string specified as the directive argument. This is very useful for mock-up testing.
+* Implement the `echo_read_literal` directive for the combination of the command sequence
+`echo_read_bytes n; echo_test_request_data str;` where `n` is the length of the `str` literal string.
+This could be very useful for mock-up testing.
+* Implement the `echo_read_until` directive to allow reading request data until seeing a terminator
+string literal specified as the directive argument.
+* Implement the `echo_read_regex` directive to allow reading request data according to a user-supplied
+Perl-compatible regular expression (maybe we could use libsregex to ensure efficient streaming reading).
+* Port over the "postpone_output" feature of the "http" subsystem. This could improve performance
+by reducing syscalls (and potentially underlying data packets too).
 
 [Back to TOC](#table-of-contents)
 
