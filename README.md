@@ -694,7 +694,7 @@ Report Bugs
 
 Although a lot of effort has been put into testing and code tuning, there must be some serious bugs lurking somewhere in this module. So whenever you are bitten by any quirks, please don't hesitate to
 
-1. create a ticket on the [issue tracking interface](https://github.com/agentzh/stream-echo-nginx-module/issues) provided by GitHub,
+1. create a ticket on the [issue tracking interface](https://github.com/openresty/stream-echo-nginx-module/issues) provided by GitHub,
 1. or send a bug report, questions, or even patches to the [OpenResty Community](#community).
 
 [Back to TOC](#table-of-contents)
@@ -702,7 +702,7 @@ Although a lot of effort has been put into testing and code tuning, there must b
 Source Repository
 =================
 
-Available on github at [agentzh/stream-echo-nginx-module](https://github.com/agentzh/stream-echo-nginx-module).
+Available on github at [openresty/stream-echo-nginx-module](https://github.com/openresty/stream-echo-nginx-module).
 
 [Back to TOC](#table-of-contents)
 
