@@ -617,6 +617,9 @@ Caveats
 
 * Unlike the [ngx_http_echo module](https://github.com/openresty/echo-nginx-module), this module has no NGINX variable
 support since NGINX variables are not supported in the "stream" subsystem of NGINX (yet).
+* The commands of this module cannot be mixed with other response-generating modules like the standard
+[ngx_stream_proxy module](http://nginx.org/en/docs/stream/ngx_stream_proxy_module.html) in the same
+`server {}` block, for obvious reasons.
 
 [Back to TOC](#table-of-contents)
 
