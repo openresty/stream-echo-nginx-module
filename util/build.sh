@@ -29,4 +29,5 @@ ngx-build $force $version \
             --with-poll_module \
             --without-http_ssi_module \
             --with-stream \
+            --with-threads \
             --with-debug || exit 1
