@@ -1212,8 +1212,7 @@ ngx_stream_echo_read_discarded_request(ngx_stream_session_t *s)
                        n);
     }
 
-    /* cannot really reach here */
-    return NGX_ERROR;
+    /* cannot reach here */
 }
 
 
