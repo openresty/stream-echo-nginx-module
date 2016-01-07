@@ -162,7 +162,7 @@ qr/stream echo running sleep \(delay: \d+\)|stream echo writer handler|stream ec
 --- grep_error_log_out eval
 qr/^stream echo running sleep \(delay: 43\)
 (?:stream echo writer handler
-)+stream echo sleep event handler
+)*stream echo sleep event handler
 stream echo running sleep \(delay: 52\)
 (?:stream echo writer handler
 )+stream echo sleep event handler
