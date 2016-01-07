@@ -33,3 +33,11 @@
    fun:ngx_single_process_cycle
    fun:main
 }
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Param
+   epoll_ctl(event)
+   fun:epoll_ctl
+   fun:ngx_epoll_add_event
+   fun:ngx_event_process_init
+}
