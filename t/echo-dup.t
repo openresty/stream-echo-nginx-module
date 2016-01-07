@@ -148,6 +148,7 @@ echo_duplicate 2_000 a;
 --- no_error_log
 [error]
 [alert]
+--- timeout: 10
 
 
 
