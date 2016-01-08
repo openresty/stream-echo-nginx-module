@@ -1,6 +1,6 @@
 # vi:set ft= ts=4 et:
 
-use t::TestStream;
+use Test::Nginx::Socket::Lua::Stream;
 
 repeat_each(2);
 
