@@ -24,7 +24,6 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-
 #include <stdarg.h>
 
 static ngx_inline void
@@ -37,11 +36,7 @@ dd(const char * fmt, ...)
 #else
 
 #   if (NGX_HAVE_VARIADIC_MACROS)
-
 #       define dd(...)
-
-#       define dd_enter()
-
 #   else
 
 #include <stdarg.h>
