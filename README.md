@@ -667,7 +667,7 @@ Compatibility
 
 The following versions of Nginx should work with this module:
 
-* **1.9.x**                       (last tested: 1.9.3)
+* **1.9.x**                       (last tested: 1.9.7)
 
 NGINX versions older than 1.9.0 will *not* work due to the lack of the "stream" subsystem.
 
@@ -721,7 +721,7 @@ This wiki page is also maintained by the author himself, and everybody is encour
 Copyright & License
 ===================
 
-Copyright (c) 2015, Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, CloudFlare Inc.
+Copyright (c) 2015-2016, Yichun "agentzh" Zhang (章亦春) <agentzh@gmail.com>, CloudFlare Inc.
 
 This module is licensed under the terms of the BSD license.
 
