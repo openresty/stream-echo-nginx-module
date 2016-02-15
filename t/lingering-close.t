@@ -121,6 +121,7 @@ hel
 --- stream_response chop
 hel
 
+--- wait: 0.1
 --- no_error_log eval
 [
 qr/event timer add: \d+: 321:/,
