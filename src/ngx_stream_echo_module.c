@@ -304,6 +304,9 @@ static ngx_command_t  ngx_stream_echo_commands[] = {
 
 
 static ngx_stream_module_t  ngx_stream_echo_module_ctx = {
+#if (nginx_version >= 1011002)
+    NULL,                                  /* preconfiguration */
+#endif
     NULL,                                  /* postconfiguration */
 
     NULL,                                  /* create main configuration */
