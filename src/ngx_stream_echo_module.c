@@ -554,24 +554,40 @@ ngx_stream_echo_exec_echo(ngx_stream_session_t *s,
         return NGX_OK;
     }
 
-    out = ngx_chain_get_free_buf(c->pool, &ctx->free);
-    if (out == NULL) {
-        return NGX_ERROR;
+
+    if (c->type == SOCK_STREAM) {
+        out = ngx_chain_get_free_buf(c->pool, &ctx->free);
+        if (out == NULL) {
+            return NGX_ERROR;
+        }
+
+        out->buf->memory = 1;
+
+        out->buf->pos = cmd->data.buffer.data;
+        out->buf->last = out->buf->pos + cmd->data.buffer.len;
+
+        out->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
+
+
+        rc = ngx_chain_writer(&ctx->writer, out);
+
+        dd("chain writer returned: %d", (int) rc);
+
+        ngx_chain_update_chains(c->pool, &ctx->free, &ctx->busy, &out,
+                                (ngx_buf_tag_t) &ngx_stream_echo_module);
+
+    } else { /* SOCK_DGRAM */
+        rc = ngx_udp_send(c, cmd->data.buffer.data, cmd->data.buffer.len);
+
+        if (rc == -1) {
+            return NGX_ERROR;
+        }
+
+        if ((size_t) rc != (size_t) cmd->data.buffer.len) {
+            ngx_log_error(NGX_LOG_CRIT, c->log, 0, "send() incomplete");
+            return NGX_ERROR;
+        }
     }
-
-    out->buf->memory = 1;
-
-    out->buf->pos = cmd->data.buffer.data;
-    out->buf->last = out->buf->pos + cmd->data.buffer.len;
-
-    out->buf->tag = (ngx_buf_tag_t) &ngx_stream_echo_module;
-
-    rc = ngx_chain_writer(&ctx->writer, out);
-
-    dd("chain writer returned: %d", (int) rc);
-
-    ngx_chain_update_chains(c->pool, &ctx->free, &ctx->busy, &out,
-                            (ngx_buf_tag_t) &ngx_stream_echo_module);
 
     return rc;
 }
@@ -651,6 +667,13 @@ ngx_stream_echo_exec_read_bytes(ngx_stream_session_t *s,
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running read-bytes (busy: %p)", ctx->busy);
 
+    if (c->type == SOCK_DGRAM) {
+        ngx_log_error(NGX_LOG_CRIT, c->log, 0,
+                      "stream echo: echo_read_bytes is not supported "
+                      "for udp server");
+        return NGX_ERROR;
+    }
+
     if (ctx->discard_req) {
         ngx_log_error(NGX_LOG_CRIT, c->log, 0,
                       "stream echo: echo_read_bytes not allowed after "
@@ -727,6 +750,13 @@ ngx_stream_echo_exec_read_line(ngx_stream_session_t *s,
 
     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0,
                    "stream echo running read-line (busy: %p)", ctx->busy);
+
+    if (c->type == SOCK_DGRAM) {
+        ngx_log_error(NGX_LOG_CRIT, c->log, 0,
+                      "stream echo: echo_read_line is not supported "
+                      "for udp server");
+        return NGX_ERROR;
+    }
 
     if (ctx->discard_req) {
         ngx_log_error(NGX_LOG_CRIT, c->log, 0,
