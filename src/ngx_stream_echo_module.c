@@ -1143,7 +1143,7 @@ ngx_stream_echo_discarded_request_handler(ngx_event_t *rev)
 
     if (rc == NGX_OK) {
         /* eof found */
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, rc);
         return;
     }
 
@@ -1374,7 +1374,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
                    "stream echo finalize: rc=%i", rc);
 
     if (rc == NGX_ERROR || rc == NGX_DECLINED) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, rc);
         return;
     }
 
@@ -1382,7 +1382,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 
     ctx = ngx_stream_get_module_ctx(s, ngx_stream_echo_module);
     if (ctx == NULL) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1396,7 +1396,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
         }
 
         if (ngx_handle_write_event(c->write, 0) != NGX_OK) {
-            ngx_stream_close_connection(c);
+            ngx_stream_finalize_session(s, NGX_ERROR);
         }
 
         return;
@@ -1411,7 +1411,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 
             if (ctx->busy == NULL) {
                 if (ngx_del_event(c->write, NGX_WRITE_EVENT, 0) != NGX_OK) {
-                    ngx_stream_close_connection(c);
+                    ngx_stream_finalize_session(s, NGX_ERROR);
                 }
             }
         }
@@ -1435,7 +1435,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 #endif
 
     if (c->error) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1452,7 +1452,7 @@ ngx_stream_echo_finalize(ngx_stream_session_t *s, ngx_int_t rc)
 
     dd("closing connection upon successful completion");
 
-    ngx_stream_close_connection(c);
+    ngx_stream_finalize_session(s, rc);
     return;
 }
 
@@ -1476,7 +1476,7 @@ ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
     ngx_add_timer(rev, escf->lingering_timeout);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1485,7 +1485,7 @@ ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
 
     if (wev->active && (ngx_event_flags & NGX_USE_LEVEL_EVENT)) {
         if (ngx_del_event(wev, NGX_WRITE_EVENT, 0) != NGX_OK) {
-            ngx_stream_close_connection(c);
+            ngx_stream_finalize_session(s, NGX_ERROR);
             return;
         }
     }
@@ -1493,7 +1493,7 @@ ngx_stream_echo_set_lingering_close(ngx_stream_session_t *s,
     if (ngx_shutdown_socket(c->fd, NGX_WRITE_SHUTDOWN) == -1) {
         ngx_connection_error(c, ngx_socket_errno,
                              ngx_shutdown_socket_n " failed");
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1521,7 +1521,7 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
                    "stream echo lingering close handler");
 
     if (rev->timedout) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1532,7 +1532,7 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
 
     timer = (ngx_msec_t) ctx->lingering_time - (ngx_msec_t) ngx_time();
     if ((ngx_msec_int_t) timer <= 0) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
@@ -1543,7 +1543,7 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
                        "stream echo lingering read: %d", n);
 
         if (n == NGX_ERROR || n == 0) {
-            ngx_stream_close_connection(c);
+            ngx_stream_finalize_session(s, NGX_ERROR);
             return;
         }
 
@@ -1561,7 +1561,7 @@ ngx_stream_echo_lingering_close_handler(ngx_event_t *rev)
     } while (rev->ready);
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
-        ngx_stream_close_connection(c);
+        ngx_stream_finalize_session(s, NGX_ERROR);
         return;
     }
 
