@@ -644,12 +644,12 @@ Installation
 ============
 
 Grab the nginx source code from [nginx.org](http://nginx.org/), for example,
-the version 1.9.3 (see [nginx compatibility](#compatibility)), and then build the source with this module:
+the version 1.19.2 (see [nginx compatibility](#compatibility)), and then build the source with this module:
 
 ```bash
-wget 'http://nginx.org/download/nginx-1.9.3.tar.gz'
-tar -xzvf nginx-1.9.3.tar.gz
-cd nginx-1.9.3/
+wget 'http://nginx.org/download/nginx-1.19.2.tar.gz'
+tar -xzvf nginx-1.19.2.tar.gz
+cd nginx-1.19.2/
 
 # Here we assume you would install you nginx under /opt/nginx/.
 ./configure --prefix=/opt/nginx \
@@ -665,9 +665,9 @@ sudo make install
 Compatibility
 =============
 
-The following versions of Nginx should work with this module:
+The following versions of Nginx should work with this module version:
 
-* **1.9.x**                       (last tested: 1.9.7)
+* **1.16.x+**                       (last tested: 1.17.8)
 
 NGINX versions older than 1.9.0 will *not* work due to the lack of the "stream" subsystem.
 

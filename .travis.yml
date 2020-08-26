@@ -21,7 +21,7 @@ env:
     - NGX_BUILD_JOBS=$JOBS
     - TEST_NGINX_SLEEP=0.006
   matrix:
-    - NGINX_VERSION=1.9.15
+    - NGINX_VERSION=1.17.8
 
 services:
  - memcache
@@ -38,7 +38,7 @@ install:
   - git clone https://github.com/openresty/mockeagain.git
   - git clone https://github.com/openresty/test-nginx.git
   - git clone -b v2.1-agentzh https://github.com/openresty/luajit2.git
-  - git clone https://github.com/openresty/lua-nginx-module.git ../lua-nginx-module
+  - git clone --branch v0.10.12 --depth 1 https://github.com/openresty/lua-nginx-module.git ../lua-nginx-module
 
 script:
   - cd luajit2
